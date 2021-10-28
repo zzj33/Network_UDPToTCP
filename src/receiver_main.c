@@ -21,7 +21,7 @@
 
 struct sockaddr_in si_me, si_other;
 int s, slen;
-
+header_t * header;
 
 void diep(char *s) {
     perror(s);
@@ -32,6 +32,7 @@ void diep(char *s) {
 void first_handshake(int sockfd){
     header = calloc(1, sizeof(header_t));
     header->syn = 1;
+    header->fin = 0;
     header->seq = rand()%256; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c
     header->ack = 0;
     ssize_t bytes_sent = sendto(sockfd, header, sizeof(header), 0, NULL, 0);

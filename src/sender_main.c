@@ -19,6 +19,7 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/time.h>
+#include "header.h"
 
 
 #define HEADER_FLAG 0 //1-0001:SYN, 2-0010:ACK, 4-0100:FIN

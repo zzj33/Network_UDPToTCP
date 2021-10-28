@@ -54,7 +54,7 @@ void first_handshake(int sockfd){
     header->ack = 0;
     ssize_t bytes_sent = sendto(sockfd, header, sizeof(header), 0, NULL, 0);
     if (bytes_sent == -1){
-        diep("First Handshake");
+        diep("Send first-way Handshake");
     }
 }
 

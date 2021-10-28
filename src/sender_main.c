@@ -26,6 +26,8 @@
 #define HEADER_ACK 5 //5-8 for ack#
 #define HEADER_DATA 9 //4- for data fragment
 #define PCK_SIZE 4096
+#define INITIAL_TIMEOUT 1000 // in ms
+#define INITIAL_SST 64
 
 struct sockaddr_in si_other;
 int s, slen;

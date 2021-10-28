@@ -25,9 +25,15 @@
 #define HEADER_SEQ 1 //1-4 for seq#
 #define HEADER_ACK 5 //5-8 for ack#
 #define HEADER_DATA 9 //4- for data fragment
-#define PCK_SIZE 4096
+#define PCK_SIZE 4096 // TODO: 1472 payload
 #define INITIAL_TIMEOUT 1000 // in ms
 #define INITIAL_SST 64
+
+/*
+Invariants:
+- sequence number increase by bytes
+- window size measured by bytes
+*/
 
 struct sockaddr_in si_other;
 int s, slen;

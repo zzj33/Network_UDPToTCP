@@ -38,6 +38,7 @@ Invariants:
 
 struct sockaddr_in si_other;
 int s, slen;
+char * buffer;
 header_t * header;
 
 
@@ -95,7 +96,21 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 
 
 	/* Send data and receive acknowledgements on s*/
+    buffer = calloc(1, PACKET_SIZE);
+    header = (header_t *)buffer;
+
     first_handshake(s, si_other);
+
+    char* data = buffer + sizeof(header_t);
+    strcpy(data, "I can!");
+    fprintf(stderr, "buffer size%lu\n", PACKET_SIZE);
+
+    // start sending file
+    ssize_t bytes_sent = sendto(s, buffer, PACKET_SIZE, 0, (const struct sockaddr *)&si_other, sizeof(si_other));
+    // ssize_t bytes_sent = sendto(sockfd, header, sizeof(header), 0, NULL, 0);
+    if (bytes_sent == -1){
+        diep("Send first-way Handshake");
+    }
 
     printf("Closing the socket\n");
     close(s);

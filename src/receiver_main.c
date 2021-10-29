@@ -18,9 +18,6 @@
 #include "header.h"
 // https://www.geeksforgeeks.org/udp-server-client-implementation-c/
 
-
-#define PACKET_SIZE 1472
-
 struct sockaddr_in si_me, si_other;
 int s, slen;
 char * buffer;
@@ -77,6 +74,17 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     second_handshake(s, si_other);
 
     // receive file
+    char* data = buffer + sizeof(header_t);
+    socklen_t len = sizeof(si_other);
+    int bytes_recv = recvfrom(s, buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
+    if (bytes_recv == -1){
+        diep("Recieve data");
+    }
+    fprintf(stderr, "Bytes received: %d,Received data: %s\n", bytes_recv, data);
+    // while (header_recv->fin != 1){
+    //     fprintf(stderr, "Received data: %s\n", data);
+    // }
+    
     
 
     close(s);

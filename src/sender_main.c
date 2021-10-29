@@ -46,14 +46,15 @@ void diep(char *s) {
     exit(1);
 }
 
-void first_handshake(int sockfd){
+void first_handshake(int sockfd, const struct sockaddr_in dest_addr){
     header = calloc(1, sizeof(header_t));
     header->syn = 1;
     header->fin = 0;
     header->seq = rand()%256; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c
     header->ack = 0;
     fprintf(stderr, "ready to send with syn number: %d\n", header->seq);
-    ssize_t bytes_sent = sendto(sockfd, header, sizeof(header), 0, NULL, 0);
+    ssize_t bytes_sent = sendto(sockfd, header, sizeof(header), 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    // ssize_t bytes_sent = sendto(sockfd, header, sizeof(header), 0, NULL, 0);
     if (bytes_sent == -1){
         diep("Send first-way Handshake");
     }
@@ -94,7 +95,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 
 
 	/* Send data and receive acknowledgements on s*/
-    first_handshake(s);
+    first_handshake(s, si_other);
 
     printf("Closing the socket\n");
     close(s);

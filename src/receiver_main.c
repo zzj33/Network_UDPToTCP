@@ -16,11 +16,14 @@
 #include <unistd.h>
 #include <pthread.h>
 #include "header.h"
+// https://www.geeksforgeeks.org/udp-server-client-implementation-c/
 
 
+#define PACKET_SIZE 1472
 
 struct sockaddr_in si_me, si_other;
 int s, slen;
+char * buffer;
 header_t * header;
 header_t * header_recv; // the header received from sender
 
@@ -32,7 +35,6 @@ void diep(char *s) {
 
 void second_handshake(int sockfd, const struct sockaddr_in dest_addr){
     socklen_t len = sizeof(dest_addr);
-    header_recv = calloc(1, sizeof(header_t));
     int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_recv), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
     if (bytes_recv == -1){
         diep("Recieve first-way handshake");
@@ -70,7 +72,12 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
         diep("bind");
 
 	/* Now receive data and send acknowledgements */  
-    second_handshake(s, si_other);  
+    buffer = calloc(1, PACKET_SIZE);
+    header_recv = (header_t *)buffer;
+    second_handshake(s, si_other);
+
+    // receive file
+    
 
     close(s);
 	printf("%s received.", destinationFile);

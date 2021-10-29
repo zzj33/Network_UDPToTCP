@@ -32,14 +32,22 @@
 
 /*
 Invariants:
-- sequence number increase by bytes
-- window size measured by bytes
+- sequence number increase by packet
 */
 
 struct sockaddr_in si_other;
 int s, slen;
-char * buffer;
+char * buffer; // heap memory, store the whole packet: including header and actual data. Same in receiver
 header_t * header;
+float cw_size = 1; // congestion window size
+int file_position = 0; // should times the data size to get the byte position
+int base = 0; // the first index in the congestion window
+int tail = 0; // the last index in the congestion window
+int dupack = 0;
+int sst = INITIAL_SST;
+int last_ack = -1;
+bool timeout = true;
+int bytes_to_send; // global var, bytes remain to be send
 
 
 void diep(char *s) {
@@ -62,6 +70,15 @@ void first_handshake(int sockfd, const struct sockaddr_in dest_addr){
 
 }
 
+void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
+    
+    
+    while (!timeout && dupack <3 && cw_size < sst & bytes_to_send > 0){
+
+    }
+
+}
+
 void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* filename, unsigned long long int bytesToTransfer) {
     //Open the file
     FILE *fp;
@@ -70,10 +87,15 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
         printf("Could not open file to send.");
         exit(1);
     }
+    fseek(fp, 0, SEEK_END);
+    int bytes_to_send = ftell(fp);
+    if (bytesToTransfer < bytes_to_send){
+        bytes_to_send = bytesToTransfer;
+    } 
     printf("%llu", bytesToTransfer);
     // unsigned long int num_pck = (bytesToTransfer - 1) / (PCK_SIZE - HEADER_DATA) + 1; //num of packets need to send
     
-    
+
     
 
 
@@ -100,6 +122,16 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     header = (header_t *)buffer;
 
     first_handshake(s, si_other);
+
+    while (bytes_to_send > 0){
+        if (timeout){
+            slow_start(s, si_other, fp);
+        }else if (dupack == 3){
+            // TODO: fast_recovery()
+        }else{
+            // TODO: congestion avoidance
+        }
+    }
 
     char* data = buffer + sizeof(header_t);
     strcpy(data, "I can!");

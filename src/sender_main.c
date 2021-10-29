@@ -89,6 +89,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     }
     fseek(fp, 0, SEEK_END);
     int bytes_to_send = ftell(fp);
+    rewind();
     if (bytesToTransfer < bytes_to_send){
         bytes_to_send = bytesToTransfer;
     } 

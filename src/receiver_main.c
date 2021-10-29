@@ -36,6 +36,7 @@ void second_handshake(int sockfd){
     if (bytes_recv == -1){
         diep("Recieve first-way handshake");
     }
+    fprintf(stderr, "received handshake from sender with sync number: %d\n", header_recv->seq);
     header = calloc(1, sizeof(header_t));
     header->syn = 1;
     header->fin = 0;
@@ -65,7 +66,8 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     if (bind(s, (struct sockaddr*) &si_me, sizeof (si_me)) == -1)
         diep("bind");
 
-	/* Now receive data and send acknowledgements */    
+	/* Now receive data and send acknowledgements */  
+    second_handshake(s);  
 
     close(s);
 	printf("%s received.", destinationFile);

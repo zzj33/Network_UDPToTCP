@@ -52,10 +52,12 @@ void first_handshake(int sockfd){
     header->fin = 0;
     header->seq = rand()%256; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c
     header->ack = 0;
+    fprintf(stderr, "ready to send with syn number: %d\n", header->seq);
     ssize_t bytes_sent = sendto(sockfd, header, sizeof(header), 0, NULL, 0);
     if (bytes_sent == -1){
         diep("Send first-way Handshake");
     }
+
 }
 
 void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* filename, unsigned long long int bytesToTransfer) {
@@ -66,8 +68,8 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
         printf("Could not open file to send.");
         exit(1);
     }
-
-    unsigned long int num_pck = (bytesToTransfer - 1) / (PCK_SIZE - HEADER_DATA) + 1; //num of packets need to send
+    printf("%llu", bytesToTransfer);
+    // unsigned long int num_pck = (bytesToTransfer - 1) / (PCK_SIZE - HEADER_DATA) + 1; //num of packets need to send
     
     
     
@@ -92,6 +94,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 
 
 	/* Send data and receive acknowledgements on s*/
+    first_handshake(s);
 
     printf("Closing the socket\n");
     close(s);

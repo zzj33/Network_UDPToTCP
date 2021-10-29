@@ -30,9 +30,10 @@ void diep(char *s) {
 }
 
 
-void second_handshake(int sockfd){
+void second_handshake(int sockfd, const struct sockaddr_in dest_addr){
+    socklen_t len = sizeof(dest_addr);
     header_recv = calloc(1, sizeof(header_t));
-    int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_recv), MSG_WAITALL, NULL, NULL);
+    int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_recv), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
     if (bytes_recv == -1){
         diep("Recieve first-way handshake");
     }
@@ -42,10 +43,11 @@ void second_handshake(int sockfd){
     header->fin = 0;
     header->seq = rand()%256; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c
     header->ack = header_recv->seq; // I use the sequence number from client
-    ssize_t bytes_sent = sendto(sockfd, header, sizeof(header), 0, NULL, 0);
+    ssize_t bytes_sent = sendto(sockfd, header, sizeof(header), 0, (const struct sockaddr *)&dest_addr, len);
     if (bytes_sent == -1){
         diep("Send second-way handshake");
     }
+    fprintf(stderr, "finished second handshake, current sync number: %d\n", header->seq);
 }
 
 
@@ -59,6 +61,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
         diep("socket");
 
     memset((char *) &si_me, 0, sizeof (si_me));
+    memset(&si_other, 0, sizeof(si_other));
     si_me.sin_family = AF_INET;
     si_me.sin_port = htons(myUDPport);
     si_me.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -67,7 +70,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
         diep("bind");
 
 	/* Now receive data and send acknowledgements */  
-    second_handshake(s);  
+    second_handshake(s, si_other);  
 
     close(s);
 	printf("%s received.", destinationFile);

@@ -18,7 +18,7 @@
 #include "header.h"
 // https://www.geeksforgeeks.org/udp-server-client-implementation-c/
 
-#define FLOW_WINDOW_SIZE 512
+#define FLOW_WINDOW_SIZE 32
 
 struct sockaddr_in si_me, si_other;
 int s, slen;
@@ -128,7 +128,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                     // }
                     send_header(header, s, si_other);
                 }else if (buffer_dest == last_ack + 1){ // receive the base
-                    strcpy(buffer[buffer_dest], temp_buffer);
+                    memcpy(buffer[buffer_dest], temp_buffer, PACKET_SIZE);
                     for (int i = 0; i < FLOW_WINDOW_SIZE; ++i)
                     {
                         /* code */
@@ -136,7 +136,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                         if (strlen(buffer[buffer_dest]) != 0){
                             
                             // save to file
-                            fprintf(stderr, "saved data to file: %s\n", buffer[buffer_dest]);
+                            fprintf(stderr, "saved data to file: '%s'\n", buffer[buffer_dest] + sizeof(header_t));
                             header->syn = 0;
                             // header->fin = 0;
                             header->seq++; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c

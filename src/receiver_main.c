@@ -35,11 +35,11 @@ void diep(char *s) {
     exit(1);
 }
 
-bool out_of_window(int rec_seq){
+int out_of_window(int rec_seq){
     if (rec_seq < last_ack || rec_seq > last_ack + FLOW_WINDOW_SIZE){
-        return false;
+        return 0;
     }else{
-        return true;
+        return 1;
     }
 }
 
@@ -55,7 +55,7 @@ void send_header(header_t * header, int sockfd, const struct sockaddr_in dest_ad
 
 
 void second_handshake(int sockfd, const struct sockaddr_in dest_addr){
-    // socklen_t len = sizeof(dest_addr);
+    socklen_t len = sizeof(dest_addr);
     int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_recv), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
     if (bytes_recv == -1){
         diep("Recieve first-way handshake");
@@ -99,12 +99,14 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     second_handshake(s, si_other);
 
     // receive file
+    /*
     char* data;
     data = temp_buffer + sizeof(header_t);
     socklen_t len = sizeof(si_other);
     int bytes_recv;
     bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
     // handle handshake error
+    
     while (header_recv->fin != 1){
         if (bytes_recv == -1){
             diep("Recieve data");
@@ -146,8 +148,9 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
         bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
 
     }
+    */
     
-    fprintf(stderr, "Bytes received: %d,Received data: %s\n", bytes_recv, data);
+    // fprintf(stderr, "Bytes received: %d,Received data: %s\n", bytes_recv, data);
     // while (header_recv->fin != 1){
     //     fprintf(stderr, "Received data: %s\n", data);
     // }

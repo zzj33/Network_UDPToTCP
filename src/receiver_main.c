@@ -49,7 +49,7 @@ void send_header(header_t * header, int sockfd, const struct sockaddr_in dest_ad
     if (bytes_sent == -1){
         diep("Send second-way handshake");
     }
-    fprintf(stderr, "current sync number: %d\n", header->seq);
+    fprintf(stderr, "sequence no of the packet sent by receiver: %d\n", header->seq);
 
 }
 
@@ -60,7 +60,7 @@ void second_handshake(int sockfd, const struct sockaddr_in dest_addr){
     if (bytes_recv == -1){
         diep("Recieve first-way handshake");
     }
-    fprintf(stderr, "received handshake from sender with sync number: %d\n", header_recv->seq);
+    fprintf(stderr, "received handshake from sender with seq no: %d\n", header_recv->seq);
     header = calloc(1, sizeof(header_t));
     header->syn = 1;
     header->fin = 0;
@@ -119,6 +119,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
             // fprintf(stderr, "finished second handshake, current sync number: %d\n", header->seq);
             send_header(header, s, si_other);
         }else if (bytes_recv > 0){ // receive packet of data
+            fprintf(stderr, "sequence no of the sender packet received: %d\n", header_recv->seq);
             if (!out_of_window(header_recv->seq)){// see if it is in the window, if not, ignore
                 int buffer_dest = (header_recv->seq)%FLOW_WINDOW_SIZE; // the index in the buffer this packet should be placed 
                 if (header_recv->seq == last_ack){

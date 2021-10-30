@@ -66,6 +66,7 @@ void second_handshake(int sockfd, const struct sockaddr_in dest_addr){
     header->fin = 0;
     header->seq = init_seq_no; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c
     header->ack = header_recv->seq; // I use the sequence number from client
+    last_ack = header->ack;
     // ssize_t bytes_sent = sendto(sockfd, header, sizeof(header), 0, (const struct sockaddr *)&dest_addr, len);
     // if (bytes_sent == -1){
     //     diep("Send second-way handshake");
@@ -99,7 +100,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     second_handshake(s, si_other);
 
     // receive file
-    /*
+    
     char* data;
     data = temp_buffer + sizeof(header_t);
     socklen_t len = sizeof(si_other);
@@ -116,17 +117,40 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
             //     diep("Send second-way handshake");
             // }
             // fprintf(stderr, "finished second handshake, current sync number: %d\n", header->seq);
-            send_header(header, sockfd, dest_addr);
-        }else{ // receive packet of data
-            if (!out_of_window(temp_buffer->seq)){// see if it is in the window, if not, ignore
-                int buffer_dest = (temp_buffer->seq)%FLOW_WINDOW_SIZE;
-                if (temp_buffer->seq == last_ack){
+            send_header(header, s, si_other);
+        }else if (bytes_recv > 0){ // receive packet of data
+            if (!out_of_window(header_recv->seq)){// see if it is in the window, if not, ignore
+                int buffer_dest = (header_recv->seq)%FLOW_WINDOW_SIZE; // the index in the buffer this packet should be placed 
+                if (header_recv->seq == last_ack){
                     // bytes_sent = sendto(sockfd, header, sizeof(header), 0, (const struct sockaddr *)&dest_addr, len);
                     // if (bytes_sent == -1){
                     //     diep("Send ACK");
                     // }
-                    send_header(header, sockfd, dest_addr);
-                else if (temp_buffer->seq == last_ack + 1){ // receive the base
+                    send_header(header, s, si_other);
+                }else if (buffer_dest == last_ack + 1){ // receive the base
+                    strcpy(buffer[buffer_dest], temp_buffer);
+                    for (int i = 0; i < FLOW_WINDOW_SIZE; ++i)
+                    {
+                        /* code */
+                        buffer_dest %= FLOW_WINDOW_SIZE;
+                        if (strlen(buffer[buffer_dest]) != 0){
+                            
+                            // save to file
+                            fprintf(stderr, "saved data to file: %s\n", buffer[buffer_dest]);
+                            header->syn = 0;
+                            // header->fin = 0;
+                            header->seq++; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c
+                            header->ack = header_recv->seq; // I use the sequence number from client
+                            strcpy(buffer[buffer_dest], ""); // empty
+                            buffer_dest++;
+                            last_ack = header->ack;
+                            send_header(header, s, si_other);
+                            
+                        }else{
+                            break;
+                        }
+                    }
+
 
                 }else{ // receive not the base in the window
                     if (strlen(buffer[buffer_dest]) == 0){
@@ -137,7 +161,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                     // if (bytes_sent == -1){
                     //     diep("Send ACK");
                     // }
-                    send_header(header, sockfd, dest_addr);
+                    send_header(header, s, si_other);
                     
                 }
                 
@@ -148,7 +172,9 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
         bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
 
     }
-    */
+
+    // TODO: send end packet
+    
     
     // fprintf(stderr, "Bytes received: %d,Received data: %s\n", bytes_recv, data);
     // while (header_recv->fin != 1){

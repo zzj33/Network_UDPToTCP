@@ -18,15 +18,29 @@
 #include "header.h"
 // https://www.geeksforgeeks.org/udp-server-client-implementation-c/
 
+#define FLOW_WINDOW_SIZE 512
+
 struct sockaddr_in si_me, si_other;
 int s, slen;
-char * buffer;
-header_t * header;
+char buffer[FLOW_WINDOW_SIZE][PACKET_SIZE]; // https://stackoverflow.com/questions/1088622/how-do-i-create-an-array-of-strings-in-c/1095006
+header_t * header; // handshake header, also the last header sent
 header_t * header_recv; // the header received from sender
+int init_seq_no = 0; // sequence number: 20000000/1400 = 14285.71428571 packets in max, seq number max 
+int last_ack = -1;
+int buffer_head = 0;
+int pkts_received = 0;
 
 void diep(char *s) {
     perror(s);
     exit(1);
+}
+
+bool out_of_window(int rec_seq){
+    if (rec_seq < last_ack || rec_seq > last_ack + FLOW_WINDOW_SIZE){
+        return false;
+    }else{
+        return true;
+    }
 }
 
 
@@ -40,7 +54,7 @@ void second_handshake(int sockfd, const struct sockaddr_in dest_addr){
     header = calloc(1, sizeof(header_t));
     header->syn = 1;
     header->fin = 0;
-    header->seq = rand()%256; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c
+    header->seq = init_seq_no; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c
     header->ack = header_recv->seq; // I use the sequence number from client
     ssize_t bytes_sent = sendto(sockfd, header, sizeof(header), 0, (const struct sockaddr *)&dest_addr, len);
     if (bytes_sent == -1){
@@ -69,17 +83,59 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
         diep("bind");
 
 	/* Now receive data and send acknowledgements */  
-    buffer = calloc(1, PACKET_SIZE);
-    header_recv = (header_t *)buffer;
+    char * temp_buffer = calloc(1, PACKET_SIZE); // we first store the received pkt here and then cpy to buffer if necessary
+    header_recv = (header_t *)temp_buffer;
     second_handshake(s, si_other);
 
     // receive file
-    char* data = buffer + sizeof(header_t);
+    char* data;
+    data = temp_buffer + sizeof(header_t);
     socklen_t len = sizeof(si_other);
-    int bytes_recv = recvfrom(s, buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
-    if (bytes_recv == -1){
-        diep("Recieve data");
+    ssize_t bytes_sent;
+    int bytes_recv;
+    bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
+    // handle handshake error
+    while (header_recv->fin != 1){
+        if (bytes_recv == -1){
+            diep("Recieve data");
+        }else if (bytes_recv == sizeof(header_t)){ // still received the first handshake header
+            bytes_sent = sendto(sockfd, header, sizeof(header), 0, (const struct sockaddr *)&dest_addr, len);
+            if (bytes_sent == -1){
+                diep("Send second-way handshake");
+            }
+            fprintf(stderr, "finished second handshake, current sync number: %d\n", header->seq);
+        }else{ // receive packet of data
+            if (!out_of_window(temp_buffer->seq)){// see if it is in the window, if not, ignore
+                int buffer_dest = (temp_buffer->seq)%FLOW_WINDOW_SIZE;
+                if (temp_buffer->seq == last_ack){
+                    bytes_sent = sendto(sockfd, header, sizeof(header), 0, (const struct sockaddr *)&dest_addr, len);
+                    if (bytes_sent == -1){
+                        diep("Send ACK");
+                    }
+                else if (temp_buffer->seq == last_ack + 1){ // receive the base
+
+                }else{ // receive not the base in the window
+                    if (strlen(buffer[buffer_dest]) == 0){
+                        strcpy(buffer[buffer_dest], temp_buffer);
+                    }
+                    // send previous header.
+                    bytes_sent = sendto(sockfd, header, sizeof(header), 0, (const struct sockaddr *)&dest_addr, len);
+                    if (bytes_sent == -1){
+                        diep("Send ACK");
+                    }
+                    
+                }
+                
+            }
+            
+            // if ooo, send the old header, and buffer it if necessary
+            // not ooo, build new header and move window forward.
+
+        }
+        bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
+
     }
+    
     fprintf(stderr, "Bytes received: %d,Received data: %s\n", bytes_recv, data);
     // while (header_recv->fin != 1){
     //     fprintf(stderr, "Received data: %s\n", data);

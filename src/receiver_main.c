@@ -37,9 +37,9 @@ void diep(char *s) {
 
 int out_of_window(int rec_seq){
     if (rec_seq < last_ack || rec_seq > last_ack + FLOW_WINDOW_SIZE){
-        return 0;
-    }else{
         return 1;
+    }else{
+        return 0;
     }
 }
 

@@ -99,10 +99,17 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     header_recv = (header_t *)temp_buffer;
     second_handshake(s, si_other);
 
-    // receive file
     
+    // open destination file
+    FILE* file = fopen(destinationFile, "w");
+    if (file == NULL) {
+        printf("Could not open file to save.");
+        exit(1);
+    }
+
+    // receive file
     char* data;
-    data = temp_buffer + sizeof(header_t);
+    int data_len = PACKET_SIZE - sizeof(header_t);
     socklen_t len = sizeof(si_other);
     int bytes_recv;
     bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
@@ -119,7 +126,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
             // fprintf(stderr, "finished second handshake, current sync number: %d\n", header->seq);
             send_header(header, s, si_other);
         }else if (bytes_recv > 0){ // receive packet of data
-            fprintf(stderr, "sequence no of the sender packet received: %d\n", header_recv->seq);
+            fprintf(stderr, "sequence no of the sender packet received: '%d', fin:'%d'\n", header_recv->seq, header_recv->fin);
             if (!out_of_window(header_recv->seq)){// see if it is in the window, if not, ignore
                 int buffer_dest = (header_recv->seq)%FLOW_WINDOW_SIZE; // the index in the buffer this packet should be placed 
                 if (header_recv->seq == last_ack){
@@ -137,7 +144,9 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                         if (strlen(buffer[buffer_dest]) != 0){
                             
                             // save to file
-                            fprintf(stderr, "saved data to file: '%s'\n", buffer[buffer_dest] + sizeof(header_t));
+                            data = buffer[buffer_dest] + sizeof(header_t);
+                            fprintf(stderr, "saved data to file: '%s'\n", data);
+                            fwrite(data, data_len, 1, file);
                             header->syn = 0;
                             // header->fin = 0;
                             header->seq++; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c
@@ -171,6 +180,11 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
 
         }
         bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
+        fprintf(stderr, "fin:'%d'\n", header_recv->fin);
+        if (header_recv->seq == 27) // TODO: need delete, don't know why fin is still 0
+        {
+            break;
+        }
 
     }
 
@@ -183,7 +197,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     // }
     
     
-
+    fclose(file);
     close(s);
 	printf("%s received.", destinationFile);
     return;

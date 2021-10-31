@@ -190,6 +190,22 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     }
 
     // TODO: send end packet
+    header->seq++;
+    header->syn = 0;
+    header->fin = 0;
+    fclose(file);
+    send_header(header, s, si_other);
+
+    header->seq++;
+    header->fin = 1;
+
+    send_header(header, s, si_other);
+    bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
+    while (header_recv->ack != header->seq){
+        send_header(header, s, si_other);
+        bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
+    }
+
     // TODO: another new line in receive file
     
     
@@ -199,7 +215,6 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     // }
     
     
-    fclose(file);
     close(s);
 	printf("%s received. int len:%lu\n", destinationFile, sizeof(int));
     return;

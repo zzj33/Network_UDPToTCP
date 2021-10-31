@@ -49,7 +49,7 @@ void send_header(header_t * header, int sockfd, const struct sockaddr_in dest_ad
     if (bytes_sent == -1){
         diep("Send second-way handshake");
     }
-    fprintf(stderr, "sequence no of the packet sent by receiver: %d\n", header->seq);
+    fprintf(stderr, "sequence no of the packet sent: %d\n", header->seq);
 
 }
 
@@ -116,6 +116,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     // handle handshake error
     
     while (header_recv->fin != 1){
+        fprintf(stderr, "bytes received: '%d'\n", bytes_recv);
         if (bytes_recv == -1){
             diep("Recieve data");
         }else if (bytes_recv == sizeof(header_t)){ // still received the first handshake header
@@ -135,7 +136,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                     //     diep("Send ACK");
                     // }
                     send_header(header, s, si_other);
-                }else if (buffer_dest == last_ack + 1){ // receive the base
+                }else if (header_recv->seq == last_ack + 1){ // receive the base
                     memcpy(buffer[buffer_dest], temp_buffer, PACKET_SIZE);
                     for (int i = 0; i < FLOW_WINDOW_SIZE; ++i)
                     {
@@ -180,8 +181,8 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
 
         }
         bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
-        fprintf(stderr, "fin:'%d'\n", header_recv->fin);
-        if (header_recv->seq == 27) // TODO: need delete, don't know why fin is still 0
+        fprintf(stderr, "fin:'%d', bytes_recv:%d\n", header_recv->fin, bytes_recv);
+        if (header_recv->seq == 38) // TODO: need delete, don't know why fin is still 0
         {
             break;
         }

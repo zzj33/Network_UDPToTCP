@@ -45,7 +45,7 @@ int out_of_window(int rec_seq){
 
 void send_header(header_t * header, int sockfd, const struct sockaddr_in dest_addr){
     socklen_t len = sizeof(dest_addr);
-    ssize_t bytes_sent = sendto(sockfd, header, sizeof(header), 0, (const struct sockaddr *)&dest_addr, len);
+    ssize_t bytes_sent = sendto(sockfd, header, sizeof(header_t), 0, (const struct sockaddr *)&dest_addr, len);
     if (bytes_sent == -1){
         diep("Send second-way handshake");
     }
@@ -56,7 +56,7 @@ void send_header(header_t * header, int sockfd, const struct sockaddr_in dest_ad
 
 void second_handshake(int sockfd, const struct sockaddr_in dest_addr){
     socklen_t len = sizeof(dest_addr);
-    int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_recv), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
+    int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
     if (bytes_recv == -1){
         diep("Recieve first-way handshake");
     }
@@ -181,15 +181,16 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
 
         }
         bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
-        fprintf(stderr, "fin:'%d', bytes_recv:%d\n", header_recv->fin, bytes_recv);
-        if (header_recv->seq == 38) // TODO: need delete, don't know why fin is still 0
-        {
-            break;
-        }
+        fprintf(stderr, "syn:%d, seq:%d, ack:%d,fin:'%d', bytes_recv:%d\n", header_recv->syn, header_recv->seq, header_recv->ack, header_recv->fin, bytes_recv);
+        // if (header_recv->seq == 38) // TODO: need delete, don't know why fin is still 0
+        // {
+        //     break;
+        // }
 
     }
 
     // TODO: send end packet
+    // TODO: another new line in receive file
     
     
     // fprintf(stderr, "Bytes received: %d,Received data: %s\n", bytes_recv, data);
@@ -200,7 +201,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     
     fclose(file);
     close(s);
-	printf("%s received.", destinationFile);
+	printf("%s received. int len:%lu\n", destinationFile, sizeof(int));
     return;
 }
 

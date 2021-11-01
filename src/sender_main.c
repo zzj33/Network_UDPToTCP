@@ -61,6 +61,7 @@ struct timespec ts;
 _Bool time_flag = false; //whether timeout
 _Bool sendFin = false; //
 long timeout = 500000; //timeout bound
+int last_ack = -1;
 
 typedef struct time_que                             //queue
 {
@@ -128,10 +129,11 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
     socklen_t len = sizeof(dest_addr);
 
     //the first buffer 
-    sst = cw_size / 2;
-    tail = base;
-    cw_size = 1;
-    dupack = 0;
+    // time_flag = false;
+    // sst = cw_size / 2; //the first time, will it be zero? So I think maybe it is better put it under outside
+    // tail = base;
+    // cw_size = 1;
+    // dupack = 0;
     time_que *elm;
     //send data if recv ack, and check timeout, not finished
     while (!time_flag && dupack < 3 && cw_size < sst & bytes_rem > 0){
@@ -150,14 +152,20 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
         if ((curTime - STAILQ_FIRST(timeQ)->nsec) <= timeout) {
             int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
             if (bytes_recv != 0) {
-                if (not dup and ackSeq >= base) {
-                    cw += ackSeq - base + 1;
-                    base = ackSeq + 1;
+                if (header_recv->ack == last_ack){
+                    dupack++;
+                }else if (header_recv->ack >= base && header_recv->ack <= tail) {  // TODO: tail included?
+                    dupack = 0
+                    cw += header_recv->ack - base + 1;
+                    base = header_recv->ack + 1;
+                    int old_tail = tail;
                     tail = base + cw - 1;
                     if (tail >= MAX_BUF_SIZE)
                         load_buffer(fp);
-                } else {
-                    dupack++;
+                    for (int i = old_tail+1; i <= tail; ++i)
+                    {
+                        // send new packets
+                    }
                 }
             }
         } else {
@@ -212,8 +220,15 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 
     if (seqNum == 0) load_buffer(fp);
 
-    while (bytes_to_send > 0){
+    slow_start(s, si_other, fp);
+
+    while (bytes_to_send > 0){ // change all the parameters here
         if (time_flag){
+            time_flag = false;
+            sst = cw_size / 2;
+            tail = base;
+            cw_size = 1;
+            dupack = 0;
             slow_start(s, si_other, fp);
         }else if (dupack == 3){
             // TODO: fast_recovery()

@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "queue.h": "c",
+        "condition_variable": "c",
+        "future": "c",
+        "mutex": "c",
+        "shared_mutex": "c",
+        "ctime": "c",
+        "header.h": "c",
+        "time.h": "c"
+    }
+}

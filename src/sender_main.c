@@ -93,7 +93,7 @@ void first_handshake(int sockfd, const struct sockaddr_in dest_addr){
 }
 
 //reload the buffer when cw tail reach the send_buf's tail
-//(move the last cw back to the start of buffer)
+//(move the whole cw back to the start of buffer)
 void load_buffer(FILE* fp) {
     read_start += base * dataSize; //move the file index
     seqNum = read_start / dataSize; //set seqNum back to first load packet

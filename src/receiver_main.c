@@ -137,7 +137,8 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                     // }
                     send_header(header, s, si_other);
                 }else if (header_recv->seq == last_ack + 1){ // receive the base
-                    memcpy(buffer[buffer_dest], temp_buffer, PACKET_SIZE);
+                    memcpy(buffer[buffer_dest], temp_buffer, bytes_recv); // TODO: if sender send the last packet, it should send size based on data size
+                    buffer[buffer_dest][bytes_recv] = 0;
                     for (int i = 0; i < FLOW_WINDOW_SIZE; ++i)
                     {
                         /* code */
@@ -147,7 +148,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                             // save to file
                             data = buffer[buffer_dest] + sizeof(header_t);
                             fprintf(stderr, "saved data to file: '%s'\n", data);
-                            fwrite(data, data_len, 1, file);
+                            fwrite(data, strlen(data), 1, file);
                             header->syn = 0;
                             // header->fin = 0;
                             header->seq++; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c
@@ -165,7 +166,8 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
 
                 }else{ // receive not the base in the window
                     if (strlen(buffer[buffer_dest]) == 0){
-                        strcpy(buffer[buffer_dest], temp_buffer);
+                        memcpy(buffer[buffer_dest], temp_buffer, bytes_recv);
+                        buffer[buffer_dest][bytes_recv] = 0;
                     }
                     // send previous header.
                     // bytes_sent = sendto(sockfd, header, sizeof(header), 0, (const struct sockaddr *)&dest_addr, len);

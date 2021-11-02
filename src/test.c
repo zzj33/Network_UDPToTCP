@@ -81,43 +81,40 @@ void num_mergeSort(num_head *head)
 
 int main(void)
 {
-    // /* 从堆空间申请链表表头并初始化 */
-    // num_head *p_head = malloc(sizeof(num_head));
-    // SLIST_INIT(p_head);
+    /* 从堆空间申请链表表头并初始化 */
+    num_head *p_head = malloc(sizeof(num_head));
+    SLIST_INIT(p_head);
+    SLIST_FIRST(p_head)->num;
+    /* 为链表添加10个0~100的随机数 */
+    num_node *elm;
+    for (int i=0; i<10; ++i) {
+        elm = malloc(sizeof(num_node));
+        elm->num = rand() % 100;
+        SLIST_INSERT_HEAD(p_head, elm, field);
+    }
 
-    // /* 为链表添加10个0~100的随机数 */
-    // num_node *elm;
-    // for (int i=0; i<10; ++i) {
-    //     elm = malloc(sizeof(num_node));
-    //     elm->num = rand() % 100;
-    //     SLIST_INSERT_HEAD(p_head, elm, field);
-    // }
+    /* 打印排序前的链表 */
+    printf("Before sort:\n");
+    SLIST_FOREACH (elm, p_head, field) {
+        printf("addr = %p, num = %d\n", elm, elm->num);
+    }
 
-    // /* 打印排序前的链表 */
-    // printf("Before sort:\n");
-    // SLIST_FOREACH (elm, p_head, field) {
-    //     printf("addr = %p, num = %d\n", elm, elm->num);
-    // }
+    /* 归并排序函数 */
+    num_mergeSort(p_head);
 
-    // /* 归并排序函数 */
-    // num_mergeSort(p_head);
+    /* 打印排序后的链表 */
+    printf("After sort:\n");
+    SLIST_FOREACH (elm, p_head, field) {
+        printf("addr = %p, num = %d\n", elm, elm->num);
+    }
 
-    // /* 打印排序后的链表 */
-    // printf("After sort:\n");
-    // SLIST_FOREACH (elm, p_head, field) {
-    //     printf("addr = %p, num = %d\n", elm, elm->num);
-    // }
-
-    // /* 销毁链表释放空间 */
-    // while (!SLIST_EMPTY(p_head)) {
-    //     num_node *ptr = SLIST_FIRST(p_head);
-    //     SLIST_REMOVE_HEAD(p_head, field);
-    //     free(ptr);
-    // }
-    // free(p_head);
-
-    char send_buf[1024];
-    printf("%lu", strlen(send_buf));
+    /* 销毁链表释放空间 */
+    while (!SLIST_EMPTY(p_head)) {
+        num_node *ptr = SLIST_FIRST(p_head);
+        SLIST_REMOVE_HEAD(p_head, field);
+        free(ptr);
+    }
+    free(p_head);
 
     return 0;
 }

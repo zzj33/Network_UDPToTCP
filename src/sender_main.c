@@ -60,7 +60,7 @@ int bytes_rem; //bytes remaining to send
 struct timespec ts;
 
 _Bool time_flag = false; //whether timeout
-long timeout = 500000; //timeout bound
+long timeout = 500; //timeout bound, in ms
 int last_ack = -1;
 
 typedef struct time_que                             //queue
@@ -92,6 +92,7 @@ void uni_send(int sockfd, const struct sockaddr_in dest_addr){
         if (bytes_sent == -1){
             diep("Send error");
         }
+        fprintf(stderr, "timeout");
         while (!TO_flag) {
             clock_gettime(CLOCK_REALTIME, &ts);
             curTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;

@@ -143,7 +143,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                     {
                         /* code */
                         buffer_dest %= FLOW_WINDOW_SIZE;
-                        if (strlen(buffer[buffer_dest]) != 0){
+                        if (strlen(buffer[buffer_dest] + sizeof(header_t)) != 0){
                             
                             // save to file
                             data = buffer[buffer_dest] + sizeof(header_t);
@@ -201,7 +201,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     header->seq++;
     header->fin = 1;
 
-    send_header(header, s, si_other);
+    send_header(header, s, si_other); // send fin
     bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
     while (header_recv->ack != header->seq){
         send_header(header, s, si_other);

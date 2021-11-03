@@ -145,7 +145,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                             
                             // save to file
                             data = buffer[buffer_dest] + sizeof(header_t);
-                            fprintf(stderr, "saved data to file: '%s'\n", data);
+                            // fprintf(stderr, "saved data to file: '%s'\n", data);
                             fwrite(data, strlen(data), 1, file);
                             header->syn = 0;
                             // header->fin = 0;

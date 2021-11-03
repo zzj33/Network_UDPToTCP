@@ -174,6 +174,8 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                     
                 }
                 
+            }else{
+                fprintf(stderr, "- Out of window, cur window base:%d, tail:%d\n", last_ack+1,last_ack + FLOW_WINDOW_SIZE);
             }
             
 

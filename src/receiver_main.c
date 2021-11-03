@@ -49,7 +49,7 @@ void send_header(header_t * header, int sockfd, const struct sockaddr_in dest_ad
     if (bytes_sent == -1){
         diep("Send second-way handshake");
     }
-    fprintf(stderr, "sequence no of the packet sent: %d\n", header->seq);
+    fprintf(stderr, "sequence no of the packet sent: %d, ack sent:%d\n", header->seq, header->ack);
 
 }
 
@@ -153,7 +153,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                             // header->fin = 0;
                             header->seq++; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c
                             header->ack = header_recv->seq; // I use the sequence number from client
-                            strcpy(buffer[buffer_dest], ""); // empty
+                            strcpy(buffer[buffer_dest]+ sizeof(header_t), ""); // empty
                             buffer_dest++;
                             last_ack = header->ack;
                             send_header(header, s, si_other);
@@ -195,15 +195,18 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     header->seq++;
     header->syn = 0;
     header->fin = 0;
+    header->ack = header_recv->seq;
     fclose(file);
-    send_header(header, s, si_other);
+    send_header(header, s, si_other); // ack sender fin
 
     header->seq++;
     header->fin = 1;
 
     send_header(header, s, si_other); // send fin
-    bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
+    bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);// receive fin ack
     while (header_recv->ack != header->seq){
+        // TODO: timeout
+        fprintf(stderr, "header_recv->ack:%d, header->seq:%d\n", header_recv->ack, header->seq);
         send_header(header, s, si_other);
         bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
     }

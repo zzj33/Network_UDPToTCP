@@ -237,7 +237,12 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
 void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
     printf("--------fast_recovery\n");
     socklen_t len = sizeof(dest_addr);
-    sendto(sockfd, send_buf[base], PACKET_SIZE, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    int bytesToSend = PACKET_SIZE;
+    header_t * temp = (header_t *) send_buf[base];
+    if (temp -> seq == lastSeqNum)
+        bytesToSend = lastPckSize + sizeof(header_t);
+    sendto(sockfd, send_buf[base], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    printf("send packet seqNum: %d\n", temp -> seq);
     time_que *elm;
     while (!time_flag && dupack >= 3 && bytes_rem > 0){
         while (preTail < tail) {
@@ -247,11 +252,12 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
             elm -> nsec = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
             STAILQ_INSERT_TAIL(timeQ, elm, field);
             //check if the last package
-            int bytesToSend = PACKET_SIZE;
-            header_t * temp = (header_t *) send_buf[preTail+1];
+            bytesToSend = PACKET_SIZE;
+            temp = (header_t *) send_buf[preTail+1];
             if (temp -> seq == lastSeqNum)
                 bytesToSend = lastPckSize + sizeof(header_t);
             ssize_t bytes_sent = sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            printf("send packet seqNum: %d\n", temp -> seq);
             if (bytes_sent == -1){
                 diep("Send error");
             }
@@ -334,6 +340,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 
     while (bytes_rem > 0){ // change all the parameters here
         if (time_flag){
+            printf("--------timeout\n");
             time_flag = false;
             sst = cw_size / 2;
             tail = base;

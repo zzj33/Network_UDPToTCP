@@ -150,7 +150,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                             header->syn = 0;
                             // header->fin = 0;
                             header->seq++; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c
-                            header->ack = header_recv->seq; // I use the sequence number from client
+                            header->ack = ((header_t *)(buffer[buffer_dest]))->seq; // I use the sequence number from client
                             strcpy(buffer[buffer_dest]+ sizeof(header_t), ""); // empty
                             buffer_dest++;
                             last_ack = header->ack;

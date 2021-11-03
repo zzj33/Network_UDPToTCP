@@ -105,7 +105,7 @@ void uni_send(int sockfd, const struct sockaddr_in dest_addr){
                     diep("recvfrom error in uni_send()");
                 }
                 if (bytes_recv > 0 && header_recv -> ack == seqNum) {
-                    seqNum++;
+                    seqNum == header_recv -> ack + 1;
                     finish = true;
                     break;
                 }
@@ -189,8 +189,6 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
             //check if the last package
             int bytesToSend = 0;
             header_t * temp = (header_t *) send_buf[preTail+1];
-            printf("%d", temp -> seq);
-            printf("%d", lastSeqNum);
             if (temp -> seq == lastSeqNum){
                 char* data = send_buf[preTail+1] + headerSize;
                 bytesToSend = headerSize + strlen(data);
@@ -347,15 +345,15 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     header->seq = seqNum;
     header->fin = 1;
     uni_send(s, si_other);
+    printf("%d\n", seqNum);
 
     int bytes_recv;
     socklen_t len = sizeof(si_other);
-    seqNum++;
     while(true) {
         bytes_recv = recvfrom(s, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
         if (bytes_recv > 0 && header_recv -> fin == 1) {
                 header->syn = 0;
-                header->seq = header_recv -> seq;
+                header->seq = header_recv -> seq + 1;
                 header->ack = header_recv -> seq;
                 header->fin = 0;
                 sendto(s, header, sizeof(header_t), 0, (const struct sockaddr *)&si_other, sizeof(si_other));

@@ -260,7 +260,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
         bytes_to_send = bytesToTransfer;
     } 
     bytes_rem = bytes_to_send;
-    printf("%llu", bytesToTransfer);
+    printf("%d\n", bytes_to_send);
     
 
 	/* Determine how many bytes to transfer */
@@ -286,6 +286,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     header->seq = seqNum;
     header->fin = 0;
     uni_send(s, si_other);
+    fprintf(stderr, "ready to send with syn number: %d\n", header->seq);
 
 
     //time queue, load buffer, and start send
@@ -318,7 +319,6 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     header->seq = seqNum;
     header->fin = 1;
     uni_send(s, si_other);
-    fprintf(stderr, "ready to send with syn number: %d\n", header->seq);
 
 
     printf("Closing the socket\n");

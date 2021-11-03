@@ -116,7 +116,7 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     // handle handshake error
     
     while (header_recv->fin != 1){
-        fprintf(stderr, "bytes received: '%d'\n", bytes_recv);
+        fprintf(stderr, "===========================\n new packet received, seq:%d, ack:%d,fin:'%d', bytes_recv:%d\n", header_recv->seq, header_recv->ack, header_recv->fin, bytes_recv);
         if (bytes_recv == -1){
             diep("Recieve data");
         }else if (bytes_recv == sizeof(header_t)){ // still received the first handshake header
@@ -131,12 +131,10 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
             if (!out_of_window(header_recv->seq)){// see if it is in the window, if not, ignore
                 int buffer_dest = (header_recv->seq)%FLOW_WINDOW_SIZE; // the index in the buffer this packet should be placed 
                 if (header_recv->seq == last_ack){
-                    // bytes_sent = sendto(sockfd, header, sizeof(header), 0, (const struct sockaddr *)&dest_addr, len);
-                    // if (bytes_sent == -1){
-                    //     diep("Send ACK");
-                    // }
+                    fprintf(stderr, "- Same sequnce no as the last ack\n");
                     send_header(header, s, si_other);
                 }else if (header_recv->seq == last_ack + 1){ // receive the base
+                    fprintf(stderr, "- Receive the base\n");
                     memcpy(buffer[buffer_dest], temp_buffer, bytes_recv); // TODO: if sender send the last packet, it should send size based on data size
                     buffer[buffer_dest][bytes_recv] = 0;
                     for (int i = 0; i < FLOW_WINDOW_SIZE; ++i)
@@ -156,15 +154,13 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                             strcpy(buffer[buffer_dest]+ sizeof(header_t), ""); // empty
                             buffer_dest++;
                             last_ack = header->ack;
-                            send_header(header, s, si_other);
-                            
                         }else{
                             break;
                         }
                     }
-
-
+                    send_header(header, s, si_other);
                 }else{ // receive not the base in the window
+                    fprintf(stderr, "- Receive packet in the window other than the base\n");
                     if (strlen(buffer[buffer_dest]) == 0){
                         memcpy(buffer[buffer_dest], temp_buffer, bytes_recv);
                         buffer[buffer_dest][bytes_recv] = 0;
@@ -183,15 +179,10 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
 
         }
         bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
-        fprintf(stderr, "syn:%d, seq:%d, ack:%d,fin:'%d', bytes_recv:%d\n", header_recv->syn, header_recv->seq, header_recv->ack, header_recv->fin, bytes_recv);
-        // if (header_recv->seq == 38) // TODO: need delete, don't know why fin is still 0
-        // {
-        //     break;
-        // }
-
     }
 
     // TODO: send end packet
+    fprintf(stderr, "after receive fin: syn:%d, seq:%d, ack:%d,fin:'%d', bytes_recv:%d\n", header_recv->syn, header_recv->seq, header_recv->ack, header_recv->fin, bytes_recv);
     header->seq++;
     header->syn = 0;
     header->fin = 0;

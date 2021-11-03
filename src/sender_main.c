@@ -105,7 +105,7 @@ void uni_send(int sockfd, const struct sockaddr_in dest_addr){
                     diep("recvfrom error in uni_send()");
                 }
                 if (bytes_recv > 0 && header_recv -> ack == seqNum) {
-                    seqNum == header_recv -> ack + 1;
+                    seqNum = header_recv -> ack + 1;
                     finish = true;
                     break;
                 }

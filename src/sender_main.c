@@ -31,7 +31,7 @@
 #define HEADER_DATA 9 //4- for data fragment
 #define INITIAL_TIMEOUT 1000 // in ms
 #define INITIAL_SST 64
-#define MAX_BUF_SIZE 1024
+#define MAX_BUF_SIZE 100
 
 /*
 Invariants:
@@ -62,6 +62,9 @@ int bytes_rem; //bytes remaining to send
 struct timespec ts;
 
 _Bool time_flag = false; //whether timeout
+_Bool last_loaded = false;
+int lastTail = 0;   //last tail idx in cw
+int lastPckSize = 0;  //last packet's size
 long timeout = 500; //timeout bound, in ms
 int last_ack = -1;
 
@@ -119,11 +122,17 @@ void uni_send(int sockfd, const struct sockaddr_in dest_addr){
 //reload the buffer when cw tail reach the send_buf's tail
 //(move the whole cw back to the start of buffer)
 void load_buffer(FILE* fp) {
+    printf("pre-head: %d\n", base);
+    printf("pre-tail: %d\n", tail);
+    printf("pre-seqNum: %d\n", seqNum);
     read_start += base * dataSize; //move the file index
     seqNum = read_start / dataSize + 1; //set seqNum back to first load packet
+    printf("aft-seqNum: %d\n", seqNum);
     preTail -= base;
     tail -= base; //re-set the base and tail, with the same cw size
     base = 0;
+    printf("aft-head: %d\n", base);
+    printf("aft-tail: %d\n", tail);
     fseek(fp, read_start, SEEK_SET);
     int i = 0;
     //packet data into buffer
@@ -132,21 +141,30 @@ void load_buffer(FILE* fp) {
         header->syn = 0;
         header->fin = 0;
         header->seq = seqNum;
+        header->ack = 0;
         char* data = send_buf[i] + sizeof(header_t);
         fread(data, dataSize, 1, fp);
         seqNum++;
     }
     //load the last packet
     if (seqNum == lastSeqNum && i < MAX_BUF_SIZE) {
+        printf("-------load last packet: %d\n", i);
         header = (header_t *)send_buf[i];
         header->syn = 0;
         header->fin = 0;
         header->seq = seqNum;
         header->ack = 0;
         char* data = send_buf[i] + sizeof(header_t);
-        char* buf = send_buf[i];
-        fread(data, bytes_to_send - ((seqNum - 1) * dataSize), 1, fp);
+        fread(data, lastPckSize, 1, fp);
+        last_loaded = true;
     }
+}
+
+int min(int a, int b) {
+    if (a < b) 
+        return a;
+    else 
+        return b;
 }
 
 void recv_new_ack(int cur_ack, FILE* fp){
@@ -171,11 +189,17 @@ void recv_new_ack(int cur_ack, FILE* fp){
     base = last_ack + 1;
     preTail = tail;
     tail = base + cw_size - 1;
-    if (tail >= MAX_BUF_SIZE)
+    if (last_loaded) {
+        tail = min(tail, lastTail);
+        //cw_size = tail - base + 1;
+    }
+    if (tail >= MAX_BUF_SIZE && !last_loaded) {
         load_buffer(fp);
+    }
 }
 
 void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
+    printf("--------slow_start\n");
     socklen_t len = sizeof(dest_addr);
     time_que *elm;
     //send data if recv ack, and check timeout
@@ -187,14 +211,10 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
             elm -> nsec = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
             STAILQ_INSERT_TAIL(timeQ, elm, field);
             //check if the last package
-            int bytesToSend = 0;
+            int bytesToSend = PACKET_SIZE;
             header_t * temp = (header_t *) send_buf[preTail+1];
-            if (temp -> seq == lastSeqNum){
-                char* data = send_buf[preTail+1] + headerSize;
-                bytesToSend = headerSize + strlen(data);
-            } else {
-                bytesToSend = PACKET_SIZE;
-            }
+            if (temp -> seq == lastSeqNum)
+                bytesToSend = lastPckSize;
             //send package
             int bytes_send = sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
             preTail++;
@@ -206,10 +226,10 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
         if ((curTime - STAILQ_FIRST(timeQ)->nsec) <= timeout) {
             int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
             if (bytes_recv > 0) {
-                int cur_ack = header_recv->ack - (read_start * dataSize);
+                int cur_ack = header_recv->ack - (read_start / dataSize) - 1;
                 if (cur_ack == last_ack){
                     dupack++;
-                } else if (cur_ack >= base) {  // TODO: tail included?
+                } else if (cur_ack >= base) {
                     recv_new_ack(cur_ack, fp);
                 }
             }
@@ -221,6 +241,7 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
 }
 
 void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
+    printf("--------fast_recovery\n");
     socklen_t len = sizeof(dest_addr);
     sendto(sockfd, send_buf[base], PACKET_SIZE, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
     time_que *elm;
@@ -232,14 +253,10 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
             elm -> nsec = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
             STAILQ_INSERT_TAIL(timeQ, elm, field);
             //check if the last package
-            int bytesToSend = 0;
+            int bytesToSend = PACKET_SIZE;
             header_t * temp = (header_t *) send_buf[preTail+1];
-            if (temp -> seq == lastSeqNum){
-                char* data = send_buf[preTail+1] + headerSize;
-                bytesToSend = headerSize + strlen(data);
-            } else {
-                bytesToSend = PACKET_SIZE;
-            }
+            if (temp -> seq == lastSeqNum)
+                bytesToSend = lastPckSize;
             ssize_t bytes_sent = sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
             if (bytes_sent == -1){
                 diep("Send error");
@@ -252,7 +269,7 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
         if ((curTime - STAILQ_FIRST(timeQ)->nsec) <= timeout) { 
             int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
             if (bytes_recv > 0) {
-                int cur_ack = header_recv->ack - (read_start * dataSize);
+                int cur_ack = header_recv->ack - (read_start / dataSize) - 1;
                 if (cur_ack >= base) {
                     recv_new_ack(cur_ack, fp);
                 } else if (cur_ack == last_ack) {
@@ -284,7 +301,10 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     } 
     bytes_rem = bytes_to_send;
     lastSeqNum = bytes_to_send / dataSize + 1;
+    lastTail = lastSeqNum % MAX_BUF_SIZE - 1;
+    lastPckSize = bytes_to_send - ((lastSeqNum - 1) * dataSize);
     printf("filesize: %d\n", bytes_to_send);
+    printf("laseSeq: %d\n", lastSeqNum);
     
 
 	/* Determine how many bytes to transfer */

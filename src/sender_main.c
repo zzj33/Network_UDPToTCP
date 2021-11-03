@@ -105,6 +105,7 @@ void uni_send(int sockfd, const struct sockaddr_in dest_addr){
                     diep("recvfrom error in uni_send()");
                 }
                 if (bytes_recv > 0 && header_recv -> ack == seqNum) {
+                    seqNum++;
                     finish = true;
                     break;
                 }
@@ -119,14 +120,14 @@ void uni_send(int sockfd, const struct sockaddr_in dest_addr){
 //(move the whole cw back to the start of buffer)
 void load_buffer(FILE* fp) {
     read_start += base * dataSize; //move the file index
-    seqNum = read_start / dataSize; //set seqNum back to first load packet
+    seqNum = read_start / dataSize + 1; //set seqNum back to first load packet
     preTail -= base;
     tail -= base; //re-set the base and tail, with the same cw size
     base = 0;
     fseek(fp, read_start, SEEK_SET);
     int i = 0;
     //packet data into buffer
-    for (; i < MAX_BUF_SIZE && (seqNum+1) * dataSize < bytes_to_send; i++) {
+    for (; i < MAX_BUF_SIZE && seqNum * dataSize < bytes_to_send; i++) {
         header = (header_t *)send_buf[i];
         header->syn = 0;
         header->fin = 0;
@@ -136,7 +137,7 @@ void load_buffer(FILE* fp) {
         seqNum++;
     }
     //load the last packet
-    if ((seqNum+1) * dataSize >= bytes_to_send && i < MAX_BUF_SIZE) {
+    if (seqNum == lastSeqNum && i < MAX_BUF_SIZE) {
         header = (header_t *)send_buf[i];
         header->syn = 0;
         header->fin = 0;
@@ -144,7 +145,7 @@ void load_buffer(FILE* fp) {
         header->ack = 0;
         char* data = send_buf[i] + sizeof(header_t);
         char* buf = send_buf[i];
-        fread(data, bytes_to_send - (seqNum * dataSize), 1, fp);
+        fread(data, bytes_to_send - ((seqNum - 1) * dataSize), 1, fp);
     }
 }
 
@@ -188,6 +189,8 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
             //check if the last package
             int bytesToSend = 0;
             header_t * temp = (header_t *) send_buf[preTail+1];
+            printf("%d", temp -> seq);
+            printf("%d", lastSeqNum);
             if (temp -> seq == lastSeqNum){
                 char* data = send_buf[preTail+1] + headerSize;
                 bytesToSend = headerSize + strlen(data);
@@ -196,7 +199,6 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
             }
             //send package
             int bytes_send = sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
-            printf("send: %d\n", bytesToSend);
             preTail++;
 
         }
@@ -231,7 +233,16 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
             elm = malloc(sizeof(time_que));
             elm -> nsec = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
             STAILQ_INSERT_TAIL(timeQ, elm, field);
-            ssize_t bytes_sent = sendto(sockfd, send_buf[preTail+1], sizeof(send_buf[preTail+1]), 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            //check if the last package
+            int bytesToSend = 0;
+            header_t * temp = (header_t *) send_buf[preTail+1];
+            if (temp -> seq == lastSeqNum){
+                char* data = send_buf[preTail+1] + headerSize;
+                bytesToSend = headerSize + strlen(data);
+            } else {
+                bytesToSend = PACKET_SIZE;
+            }
+            ssize_t bytes_sent = sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
             if (bytes_sent == -1){
                 diep("Send error");
             }
@@ -274,7 +285,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
         bytes_to_send = bytesToTransfer;
     } 
     bytes_rem = bytes_to_send;
-    lastSeqNum = bytes_to_send / dataSize;
+    lastSeqNum = bytes_to_send / dataSize + 1;
     printf("filesize: %d\n", bytes_to_send);
     
 
@@ -331,6 +342,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     }
 
     //fareware
+    seqNum++;
     header->syn = 0;
     header->seq = seqNum;
     header->fin = 1;

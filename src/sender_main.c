@@ -95,10 +95,16 @@ void uni_send(int sockfd, const struct sockaddr_in dest_addr){
         while (!TO_flag) {
             clock_gettime(CLOCK_REALTIME, &ts);
             curTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+            fprintf(stderr, "time diff:%ld in uni_send\n", curTime - sendTime);
             if (curTime - sendTime < timeout) {
                 int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
+                fprintf(stderr, "bytes_recv:%d in uni_send\n", bytes_recv);
+                if (bytes_recv == -1){
+                    diep("recvfrom error in uni_send()");
+                }
                 if (bytes_recv > 0 && header_recv -> ack == seqNum) {
                     finish = true;
+                    break;
                 }
             } else {
                 TO_flag = true;
@@ -272,6 +278,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     }
 
 	header = calloc(1, sizeof(header_t));
+    header_recv = calloc(1, sizeof(header_t));
 
     //first hand shake
     header->syn = 1;
@@ -299,7 +306,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
         } else if (dupack == 3){
             sst = cw_size / 2;
             cw_size = sst + 3;
-            tail = tail = base + cw_size - 1;
+            tail = base + cw_size - 1;
             fast_recovery(s, si_other, fp);
         } else {
             slow_start(s, si_other, fp);

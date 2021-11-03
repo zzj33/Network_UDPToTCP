@@ -45,8 +45,10 @@ header_t * header;
 header_t * header_recv; // the header received from recieiver
 int seqNum = 0; //total packet number, start from 0
 int dataSize = PACKET_SIZE - sizeof(header_t);
+int headerSize = sizeof(header_t);
 int read_start = 0; //fp's index
 char send_buf[MAX_BUF_SIZE][PACKET_SIZE]; //pointer to packets
+int lastSeqNum = 0;
 
 int cw_size = 1; // congestion window size
 int cw_cnt = 0;  // fraction part of cw
@@ -139,9 +141,10 @@ void load_buffer(FILE* fp) {
         header->syn = 0;
         header->fin = 0;
         header->seq = seqNum;
+        header->ack = 0;
         char* data = send_buf[i] + sizeof(header_t);
+        char* buf = send_buf[i];
         fread(data, bytes_to_send - (seqNum * dataSize), 1, fp);
-        printf("last packet size: %d", bytes_to_send - (seqNum * dataSize));
     }
 }
 
@@ -182,8 +185,18 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
             elm = malloc(sizeof(time_que));
             elm -> nsec = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
             STAILQ_INSERT_TAIL(timeQ, elm, field);
-            int bytes_send = sendto(sockfd, send_buf[preTail+1], sizeof(send_buf[preTail+1]), 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
-            printf("send: %d\n", bytes_send);
+            //check if the last package
+            int bytesToSend = 0;
+            header_t * temp = (header_t *) send_buf[preTail+1];
+            if (temp -> seq == lastSeqNum){
+                char* data = send_buf[preTail+1] + headerSize;
+                bytesToSend = headerSize + strlen(data);
+            } else {
+                bytesToSend = PACKET_SIZE;
+            }
+            //send package
+            int bytes_send = sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            printf("send: %d\n", bytesToSend);
             preTail++;
 
         }
@@ -255,12 +268,13 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
         exit(1);
     }
     fseek(fp, 0, SEEK_END);
-    int bytes_to_send = ftell(fp);
+    bytes_to_send = ftell(fp);
     rewind(fp);
     if (bytesToTransfer < bytes_to_send){
         bytes_to_send = bytesToTransfer;
     } 
     bytes_rem = bytes_to_send;
+    lastSeqNum = bytes_to_send / dataSize;
     printf("filesize: %d\n", bytes_to_send);
     
 

@@ -7,6 +7,11 @@
         "shared_mutex": "c",
         "ctime": "c",
         "header.h": "c",
-        "time.h": "c"
+        "time.h": "c",
+        "string": "c",
+        "array": "c",
+        "string_view": "c",
+        "ranges": "c",
+        "span": "c"
     }
 }

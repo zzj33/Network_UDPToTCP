@@ -92,14 +92,13 @@ void uni_send(int sockfd, const struct sockaddr_in dest_addr){
         if (bytes_sent == -1){
             diep("Send error");
         }
-        fprintf(stderr, "timeout");
         while (!TO_flag) {
             clock_gettime(CLOCK_REALTIME, &ts);
             curTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-            fprintf(stderr, "time diff:%ld in uni_send\n", curTime - sendTime);
+            //fprintf(stderr, "time diff:%ld in uni_send\n", curTime - sendTime);
             if (curTime - sendTime < timeout) {
                 int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
-                fprintf(stderr, "bytes_recv:%d in uni_send\n", bytes_recv);
+                //fprintf(stderr, "bytes_recv:%d in uni_send\n", bytes_recv);
                 if (bytes_recv == -1){
                     diep("recvfrom error in uni_send()");
                 }
@@ -142,6 +141,7 @@ void load_buffer(FILE* fp) {
         header->seq = seqNum;
         char* data = send_buf[i] + sizeof(header_t);
         fread(data, bytes_to_send - (seqNum * dataSize), 1, fp);
+        printf("last packet size: %d", bytes_to_send - (seqNum * dataSize));
     }
 }
 
@@ -182,7 +182,8 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
             elm = malloc(sizeof(time_que));
             elm -> nsec = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
             STAILQ_INSERT_TAIL(timeQ, elm, field);
-            sendto(sockfd, send_buf[preTail+1], PACKET_SIZE, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            int bytes_send = sendto(sockfd, send_buf[preTail+1], sizeof(send_buf[preTail+1]), 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            printf("send: %d\n", bytes_send);
             preTail++;
 
         }
@@ -217,7 +218,7 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
             elm = malloc(sizeof(time_que));
             elm -> nsec = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
             STAILQ_INSERT_TAIL(timeQ, elm, field);
-            ssize_t bytes_sent = sendto(sockfd, send_buf[preTail+1], PACKET_SIZE, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            ssize_t bytes_sent = sendto(sockfd, send_buf[preTail+1], sizeof(send_buf[preTail+1]), 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
             if (bytes_sent == -1){
                 diep("Send error");
             }
@@ -260,7 +261,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
         bytes_to_send = bytesToTransfer;
     } 
     bytes_rem = bytes_to_send;
-    printf("%d\n", bytes_to_send);
+    printf("filesize: %d\n", bytes_to_send);
     
 
 	/* Determine how many bytes to transfer */
@@ -315,14 +316,30 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
         }
     }
 
+    //fareware
     header->syn = 0;
     header->seq = seqNum;
     header->fin = 1;
     uni_send(s, si_other);
 
+    int bytes_recv;
+    socklen_t len = sizeof(si_other);
+    seqNum++;
+    while(true) {
+        bytes_recv = recvfrom(s, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
+        if (bytes_recv > 0 && header_recv -> fin == 1) {
+                header->syn = 0;
+                header->seq = header_recv -> seq;
+                header->ack = header_recv -> seq;
+                header->fin = 0;
+                sendto(s, header, sizeof(header_t), 0, (const struct sockaddr *)&si_other, sizeof(si_other));
+                break;
+        }
+    }
 
     printf("Closing the socket\n");
     close(s);
+    fclose(fp);
     return;
 
 }

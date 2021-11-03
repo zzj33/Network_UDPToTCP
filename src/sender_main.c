@@ -205,7 +205,7 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
         long curTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
         if ((curTime - STAILQ_FIRST(timeQ)->nsec) <= timeout) {
             int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
-            if (bytes_recv != 0) {
+            if (bytes_recv > 0) {
                 int cur_ack = header_recv->ack - (read_start * dataSize);
                 if (cur_ack == last_ack){
                     dupack++;
@@ -251,7 +251,7 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
         long curTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
         if ((curTime - STAILQ_FIRST(timeQ)->nsec) <= timeout) { 
             int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
-            if (bytes_recv != 0) {
+            if (bytes_recv > 0) {
                 int cur_ack = header_recv->ack - (read_start * dataSize);
                 if (cur_ack >= base) {
                     recv_new_ack(cur_ack, fp);

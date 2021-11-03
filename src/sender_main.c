@@ -122,17 +122,11 @@ void uni_send(int sockfd, const struct sockaddr_in dest_addr){
 //reload the buffer when cw tail reach the send_buf's tail
 //(move the whole cw back to the start of buffer)
 void load_buffer(FILE* fp) {
-    printf("pre-head: %d\n", base);
-    printf("pre-tail: %d\n", tail);
-    printf("pre-seqNum: %d\n", seqNum);
     read_start += base * dataSize; //move the file index
     seqNum = read_start / dataSize + 1; //set seqNum back to first load packet
-    printf("aft-seqNum: %d\n", seqNum);
     preTail -= base;
     tail -= base; //re-set the base and tail, with the same cw size
     base = 0;
-    printf("aft-head: %d\n", base);
-    printf("aft-tail: %d\n", tail);
     fseek(fp, read_start, SEEK_SET);
     int i = 0;
     //packet data into buffer
@@ -148,7 +142,6 @@ void load_buffer(FILE* fp) {
     }
     //load the last packet
     if (seqNum == lastSeqNum && i < MAX_BUF_SIZE) {
-        printf("-------load last packet: %d\n", i);
         header = (header_t *)send_buf[i];
         header->syn = 0;
         header->fin = 0;
@@ -157,6 +150,7 @@ void load_buffer(FILE* fp) {
         char* data = send_buf[i] + sizeof(header_t);
         fread(data, lastPckSize, 1, fp);
         last_loaded = true;
+        lastTail = i;
     }
 }
 
@@ -214,11 +208,11 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
             int bytesToSend = PACKET_SIZE;
             header_t * temp = (header_t *) send_buf[preTail+1];
             if (temp -> seq == lastSeqNum)
-                bytesToSend = lastPckSize;
+                bytesToSend = lastPckSize + sizeof(header_t);
             //send package
+            printf("send packet seqNum: %d\n", temp -> seq);
             int bytes_send = sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
             preTail++;
-
         }
         //check time out and recv ack
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -256,7 +250,7 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
             int bytesToSend = PACKET_SIZE;
             header_t * temp = (header_t *) send_buf[preTail+1];
             if (temp -> seq == lastSeqNum)
-                bytesToSend = lastPckSize;
+                bytesToSend = lastPckSize + sizeof(header_t);
             ssize_t bytes_sent = sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
             if (bytes_sent == -1){
                 diep("Send error");
@@ -301,7 +295,6 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     } 
     bytes_rem = bytes_to_send;
     lastSeqNum = bytes_to_send / dataSize + 1;
-    lastTail = lastSeqNum % MAX_BUF_SIZE - 1;
     lastPckSize = bytes_to_send - ((lastSeqNum - 1) * dataSize);
     printf("filesize: %d\n", bytes_to_send);
     printf("laseSeq: %d\n", lastSeqNum);

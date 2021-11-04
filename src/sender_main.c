@@ -292,8 +292,10 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
                 } else if (cur_ack == last_ack) {
                     dupack++;
                     cw_size++;
-                    preTail = tail;
                     tail = base + cw_size - 1;
+                    if (tail >= MAX_BUF_SIZE && !last_loaded) {
+                        load_buffer(fp);
+                    }
                 }
             }
         } else {

@@ -137,7 +137,8 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                     fprintf(stderr, "- Receive the base\n");
                     memcpy(buffer[buffer_dest], temp_buffer, bytes_recv); // TODO: if sender send the last packet, it should send size based on data size
                     buffer[buffer_dest][bytes_recv] = 0;
-                    for (int i = 0; i < FLOW_WINDOW_SIZE; ++i)
+                    int i = 0;
+                    for (i = 0; i < FLOW_WINDOW_SIZE; ++i)
                     {
                         /* code */
                         buffer_dest %= FLOW_WINDOW_SIZE;

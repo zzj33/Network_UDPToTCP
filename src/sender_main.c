@@ -172,11 +172,12 @@ int max(int a, int b) {
 void recv_new_ack(int cur_ack, FILE* fp){
     dupack = 0;
     last_ack = cur_ack;
-    for (int i = base; i <= last_ack && !STAILQ_EMPTY(timeQ); i++) {
+    int i = base;
+    for (i = base; i <= last_ack && !STAILQ_EMPTY(timeQ); i++) {
         STAILQ_REMOVE_HEAD(timeQ, field);
     }
     //congestion avoidance
-    for (int i = base; i <= last_ack; i++) {
+    for (i = base; i <= last_ack; i++) {
         if (cw_size >= sst) {
             cw_cnt++;
             if (cw_cnt == cw_size) {
@@ -220,7 +221,7 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
             if (temp -> seq == lastSeqNum)
                 bytesToSend = lastPckSize + sizeof(header_t);
             //send package
-            int bytes_send = sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
             printf("send packet seqNum: %d\n", temp -> seq);
             preTail++;
         }
@@ -272,7 +273,7 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
             temp = (header_t *) send_buf[preTail+1];
             if (temp -> seq == lastSeqNum)
                 bytesToSend = lastPckSize + sizeof(header_t);
-            ssize_t bytes_sent = sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
             printf("send packet seqNum: %d\n", temp -> seq);
             // if (bytes_sent == -1){
             //     diep("Send error");

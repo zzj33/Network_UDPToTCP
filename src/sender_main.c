@@ -104,9 +104,9 @@ void uni_send(int sockfd, const struct sockaddr_in dest_addr){
             if (curTime - sendTime < timeout) {
                 int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
                 //fprintf(stderr, "bytes_recv:%d in uni_send\n", bytes_recv);
-                if (bytes_recv == -1){
-                    diep("recvfrom error in uni_send()");
-                }
+                // if (bytes_recv == -1){
+                //     diep("recvfrom error in uni_send()");
+                // }
                 if (bytes_recv > 0 && header_recv -> ack == seqNum) {
                     seqNum = header_recv -> ack + 1;
                     finish = true;
@@ -122,6 +122,7 @@ void uni_send(int sockfd, const struct sockaddr_in dest_addr){
 //reload the buffer when cw tail reach the send_buf's tail
 //(move the whole cw back to the start of buffer)
 void load_buffer(FILE* fp) {
+    printf("-----------reload packet\n");
     read_start += base * dataSize; //move the file index
     seqNum = read_start / dataSize + 1; //set seqNum back to first load packet
     preTail -= base;
@@ -169,7 +170,6 @@ int max(int a, int b) {
 }
 
 void recv_new_ack(int cur_ack, FILE* fp){
-    printf("recvnewACK: %d\n", cur_ack);
     dupack = 0;
     last_ack = cur_ack;
     for (int i = base; i <= last_ack && !STAILQ_EMPTY(timeQ); i++) {
@@ -206,8 +206,8 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
     time_que *elm;
     //send data if recv ack, and check timeout
     while (!time_flag && dupack < 3 && bytes_rem > 0){
-        printf("preTail: %d\n", preTail);
-        printf("tail: %d\n", tail);
+        // printf("preTail: %d\n", preTail);
+        // printf("tail: %d\n", tail);
         if (preTail < tail) {
             //record the timestamp and send the packet
             clock_gettime(CLOCK_REALTIME, &ts);
@@ -229,9 +229,13 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
         long curTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
         //fprintf(stderr, "time diff:%ld in uni_send\n", curTime - STAILQ_FIRST(timeQ)->nsec);
         if ((curTime - STAILQ_FIRST(timeQ)->nsec) <= timeout) {
-            int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
+            //printf("start recving...\n");
+            int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_DONTWAIT, ( struct sockaddr *) &dest_addr, &len);
+            //printf("recv:%d\n", bytes_recv);
+            // if (bytes_recv == -1) {
+            //     diep("recv error");
+            // }
             if (bytes_recv > 0) {
-                printf("ACKreceived\n");
                 int cur_ack = header_recv->ack - (read_start / dataSize) - 1;
                 if (cur_ack == last_ack){
                     dupack++;
@@ -270,16 +274,16 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
                 bytesToSend = lastPckSize + sizeof(header_t);
             ssize_t bytes_sent = sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
             printf("send packet seqNum: %d\n", temp -> seq);
-            if (bytes_sent == -1){
-                diep("Send error");
-            }
+            // if (bytes_sent == -1){
+            //     diep("Send error");
+            // }
             preTail++;
         }
         //check time out and recv ack
         clock_gettime(CLOCK_REALTIME, &ts);
         long curTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
         if ((curTime - STAILQ_FIRST(timeQ)->nsec) <= timeout) { 
-            int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
+            int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_DONTWAIT, ( struct sockaddr *) &dest_addr, &len);
             if (bytes_recv > 0) {
                 int cur_ack = header_recv->ack - (read_start / dataSize) - 1;
                 if (cur_ack >= base) {

@@ -55,18 +55,18 @@ int cw_cnt = 0;  // fraction part of cw
 float sst = INITIAL_SST;
 int base = 0; // the first index in the congestion window (packet)
 int tail = 0; // the last index in the congestion window (packet)
-int preTail = -1; // tail before recv the new ack; to find new package needed to send
+int preTail = -1; // point the last send package
 int dupack = 0;
 int bytes_to_send; // global var, total bytes to be send
 int bytes_rem; //bytes remaining to send
 struct timespec ts;
 
 _Bool time_flag = false; //whether timeout
-_Bool last_loaded = false;
+_Bool last_loaded = false; //whether loaded the last package
 int lastTail = 0;   //last tail idx in cw
 int lastPckSize = 0;  //last packet's size
 long timeout = 500; //timeout bound, in ms
-int last_ack = -1;
+int last_ack = -1; //the last ack seqNum
 
 typedef struct time_que                             //queue
 {
@@ -382,7 +382,6 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     header->seq = seqNum;
     header->fin = 1;
     uni_send(s, si_other);
-    printf("%d\n", seqNum);
 
     int bytes_recv;
     socklen_t len = sizeof(si_other);

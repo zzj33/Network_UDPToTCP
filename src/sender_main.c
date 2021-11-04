@@ -31,7 +31,7 @@
 #define HEADER_DATA 9 //4- for data fragment
 #define INITIAL_TIMEOUT 1000 // in ms
 #define INITIAL_SST 64
-#define MAX_BUF_SIZE 100
+#define MAX_BUF_SIZE 200
 
 /*
 Invariants:
@@ -161,7 +161,15 @@ int min(int a, int b) {
         return b;
 }
 
+int max(int a, int b) {
+    if (a > b) 
+        return a;
+    else 
+        return b;
+}
+
 void recv_new_ack(int cur_ack, FILE* fp){
+    printf("recvnewACK: %d\n", cur_ack);
     dupack = 0;
     last_ack = cur_ack;
     for (int i = base; i <= last_ack && !STAILQ_EMPTY(timeQ); i++) {
@@ -181,7 +189,7 @@ void recv_new_ack(int cur_ack, FILE* fp){
         bytes_rem -= dataSize; //new ack means packet received successfully
     }
     base = last_ack + 1;
-    preTail = tail;
+    preTail = max(preTail, base - 1);
     tail = base + cw_size - 1;
     if (last_loaded) {
         tail = min(tail, lastTail);
@@ -198,7 +206,9 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
     time_que *elm;
     //send data if recv ack, and check timeout
     while (!time_flag && dupack < 3 && bytes_rem > 0){
-        while (preTail < tail) {
+        printf("preTail: %d\n", preTail);
+        printf("tail: %d\n", tail);
+        if (preTail < tail) {
             //record the timestamp and send the packet
             clock_gettime(CLOCK_REALTIME, &ts);
             elm = malloc(sizeof(time_que));
@@ -210,16 +220,18 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
             if (temp -> seq == lastSeqNum)
                 bytesToSend = lastPckSize + sizeof(header_t);
             //send package
-            printf("send packet seqNum: %d\n", temp -> seq);
             int bytes_send = sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            printf("send packet seqNum: %d\n", temp -> seq);
             preTail++;
         }
         //check time out and recv ack
         clock_gettime(CLOCK_REALTIME, &ts);
         long curTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+        //fprintf(stderr, "time diff:%ld in uni_send\n", curTime - STAILQ_FIRST(timeQ)->nsec);
         if ((curTime - STAILQ_FIRST(timeQ)->nsec) <= timeout) {
             int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
             if (bytes_recv > 0) {
+                printf("ACKreceived\n");
                 int cur_ack = header_recv->ack - (read_start / dataSize) - 1;
                 if (cur_ack == last_ack){
                     dupack++;
@@ -245,7 +257,7 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
     printf("send packet seqNum: %d\n", temp -> seq);
     time_que *elm;
     while (!time_flag && dupack >= 3 && bytes_rem > 0){
-        while (preTail < tail) {
+        if (preTail < tail) {
             //record the timestamp and send the packet
             clock_gettime(CLOCK_REALTIME, &ts);
             elm = malloc(sizeof(time_que));
@@ -353,6 +365,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
             sst = cw_size / 2;
             cw_size = sst + 3;
             tail = base + cw_size - 1;
+            preTail = min(tail, preTail);
             fast_recovery(s, si_other, fp);
         } else {
             slow_start(s, si_other, fp);

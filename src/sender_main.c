@@ -41,7 +41,7 @@ Invariants:
 /*read file*/
 struct sockaddr_in si_other;
 int s, slen;
-header_t * header;
+header_t * header;  //the header of the send package
 header_t * header_recv; // the header received from recieiver
 int dataSize = PACKET_SIZE - sizeof(header_t);
 int headerSize = sizeof(header_t);
@@ -54,8 +54,8 @@ int seqNum = 0; //total packet number, start from 0
 char send_buf[MAX_BUF_SIZE][PACKET_SIZE]; //pointer to packets
 int lastSeqNum = 0; //judege when to load the last package
 _Bool last_loaded = false; //whether loaded the last package
-int lastTail = 0;   //last package idx in cw
-int lastPckSize = 0;  //last packet's size
+int lastTail = 0;   //last package idx in buffer, if have loaded the last package
+int lastPckSize = 0;  //last package's size, if have loaded the last package
 
 /*congestion window*/
 int cw_size = 1; // congestion window size
@@ -64,7 +64,7 @@ float sst = INITIAL_SST;
 int base = 0; // the first index in the congestion window (packet)
 int tail = 0; // the last index in the congestion window (packet)
 int dupack = 0;
-int last_send = -1; // point the last sended package
+int last_send = -1; // point the last sended package in  cw
 int last_ack = -1; //the last ack seqNum
 
 /*time out*/
@@ -88,6 +88,7 @@ void diep(char *s) {
     exit(1);
 }
 
+//resend the package in timeout sec, until receive the ack
 void uni_send(int sockfd, const struct sockaddr_in dest_addr){
     _Bool finish = false;
     long curTime;
@@ -119,7 +120,7 @@ void uni_send(int sockfd, const struct sockaddr_in dest_addr){
 }
 
 //reload the buffer when cw tail reach the send_buf's tail
-//(move the whole cw back to the start of buffer)
+//(move the whole cw back to the start of buffer); also can be implemented by queue
 void load_buffer(FILE* fp) {
     printf("-----------reload packet\n");
     read_start += base * dataSize; //move the file index
@@ -283,18 +284,13 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
                     recv_new_ack(cur_ack, fp, true);
                 } else if (cur_ack == last_ack) {
                     dupack++;
-                    if (cw_size < sst)
-                        cw_size++;
-                    else {
-                        cw_cnt++;
-                        if (cw_cnt == cw_size) {
-                            cw_cnt = 0;
-                            cw_size++;
-                        }
-                    }
-                    tail = base + cw_size - 1;
+                    cw_size++;
+                    tail++;
                     if (tail >= MAX_BUF_SIZE && !last_loaded) {
                         load_buffer(fp);
+                    }
+                    if (last_loaded) {
+                        tail = min(tail, lastTail);
                     }
                 }
             }

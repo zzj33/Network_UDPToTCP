@@ -12,6 +12,16 @@
         "array": "c",
         "string_view": "c",
         "ranges": "c",
-        "span": "c"
+        "span": "c",
+        "*.tcc": "c",
+        "memory": "c",
+        "fstream": "c",
+        "istream": "c",
+        "ostream": "c",
+        "sstream": "c",
+        "streambuf": "c",
+        "random": "c",
+        "any": "c",
+        "memory_resource": "c"
     }
 }

@@ -55,7 +55,7 @@ int cw_cnt = 0;  // fraction part of cw
 float sst = INITIAL_SST;
 int base = 0; // the first index in the congestion window (packet)
 int tail = 0; // the last index in the congestion window (packet)
-int preTail = -1; // point the last send package
+int last_send = -1; // point the last send package
 int dupack = 0;
 int bytes_to_send; // global var, total bytes to be send
 int bytes_rem; //bytes remaining to send
@@ -84,36 +84,31 @@ void diep(char *s) {
 }
 
 void uni_send(int sockfd, const struct sockaddr_in dest_addr){
-    _Bool TO_flag = false;
     _Bool finish = false;
     long curTime;
     long sendTime;
     socklen_t len = sizeof(dest_addr);
     while (!finish) {
+        _Bool timeout_flag = false;
         clock_gettime(CLOCK_REALTIME, &ts);
         sendTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
         ssize_t bytes_sent = sendto(sockfd, header, sizeof(header_t), 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
-        // ssize_t bytes_sent = sendto(sockfd, header, sizeof(header), 0, NULL, 0);
         if (bytes_sent == -1){
             diep("Send error");
         }
-        while (!TO_flag) {
+        while (!timeout_flag) {
             clock_gettime(CLOCK_REALTIME, &ts);
             curTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
             //fprintf(stderr, "time diff:%ld in uni_send\n", curTime - sendTime);
-            if (curTime - sendTime < timeout) {
-                int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &dest_addr, &len);
-                //fprintf(stderr, "bytes_recv:%d in uni_send\n", bytes_recv);
-                // if (bytes_recv == -1){
-                //     diep("recvfrom error in uni_send()");
-                // }
+            if (curTime - sendTime <= timeout) {
+                int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_DONTWAIT, ( struct sockaddr *) &dest_addr, &len);
                 if (bytes_recv > 0 && header_recv -> ack == seqNum) {
                     seqNum = header_recv -> ack + 1;
                     finish = true;
                     break;
                 }
             } else {
-                TO_flag = true;
+                timeout_flag = true;
             }
         }
     }
@@ -125,7 +120,7 @@ void load_buffer(FILE* fp) {
     printf("-----------reload packet\n");
     read_start += base * dataSize; //move the file index
     seqNum = read_start / dataSize + 1; //set seqNum back to first load packet
-    preTail -= base;
+    last_send -= base;
     tail -= base; //re-set the base and tail, with the same cw size
     base = 0;
     fseek(fp, read_start, SEEK_SET);
@@ -169,32 +164,36 @@ int max(int a, int b) {
         return b;
 }
 
-void recv_new_ack(int cur_ack, FILE* fp){
+void recv_new_ack(int cur_ack, FILE* fp, _Bool fast_reco){
     dupack = 0;
     last_ack = cur_ack;
     int i = base;
     for (i = base; i <= last_ack && !STAILQ_EMPTY(timeQ); i++) {
         STAILQ_REMOVE_HEAD(timeQ, field);
     }
-    //congestion avoidance
-    for (i = base; i <= last_ack; i++) {
-        if (cw_size >= sst) {
-            cw_cnt++;
-            if (cw_cnt == cw_size) {
+    if (fast_reco) { //whether in fast recovery
+        cw_size = sst;
+    } else {
+        //congestion avoidance
+        for (i = base; i <= last_ack; i++) {
+            if (cw_size - sst > 0) {
+                cw_cnt++;
+                if (cw_cnt == cw_size) {
+                    cw_size++;
+                    cw_cnt = 0;
+                }
+            } else {
                 cw_size++;
-                cw_cnt = 0;
             }
-        } else {
-            cw_size++;
         }
-        bytes_rem -= dataSize; //new ack means packet received successfully
     }
+    bytes_rem = bytes_rem - dataSize * (last_ack - base + 1); //new ack means packet received successfully
     base = last_ack + 1;
-    preTail = max(preTail, base - 1);
     tail = base + cw_size - 1;
+    last_send = max(last_send, base - 1);
+    last_send = min(last_send, tail);
     if (last_loaded) {
         tail = min(tail, lastTail);
-        //cw_size = tail - base + 1;
     }
     if (tail >= MAX_BUF_SIZE && !last_loaded) {
         load_buffer(fp);
@@ -207,9 +206,9 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
     time_que *elm;
     //send data if recv ack, and check timeout
     while (!time_flag && dupack < 3 && bytes_rem > 0){
-        // printf("preTail: %d\n", preTail);
+        // printf("last_send: %d\n", last_send);
         // printf("tail: %d\n", tail);
-        if (preTail < tail) {
+        if (last_send < tail) {
             //record the timestamp and send the packet
             clock_gettime(CLOCK_REALTIME, &ts);
             elm = malloc(sizeof(time_que));
@@ -217,13 +216,13 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
             STAILQ_INSERT_TAIL(timeQ, elm, field);
             //check if the last package
             int bytesToSend = PACKET_SIZE;
-            header_t * temp = (header_t *) send_buf[preTail+1];
+            header_t * temp = (header_t *) send_buf[last_send+1];
             if (temp -> seq == lastSeqNum)
                 bytesToSend = lastPckSize + sizeof(header_t);
             //send package
-            sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            sendto(sockfd, send_buf[last_send+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
             printf("send packet seqNum: %d\n", temp -> seq);
-            preTail++;
+            last_send++;
         }
         //check time out and recv ack
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -241,7 +240,8 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
                 if (cur_ack == last_ack){
                     dupack++;
                 } else if (cur_ack >= base) {
-                    recv_new_ack(cur_ack, fp);
+                    recv_new_ack(cur_ack, fp, false);
+                    //printf("-----window size: %d, sst: %f\n", cw_size, sst);
                 }
             }
         } else {
@@ -262,7 +262,7 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
     printf("send packet seqNum: %d\n", temp -> seq);
     time_que *elm;
     while (!time_flag && dupack >= 3 && bytes_rem > 0){
-        if (preTail < tail) {
+        if (last_send < tail) {
             //record the timestamp and send the packet
             clock_gettime(CLOCK_REALTIME, &ts);
             elm = malloc(sizeof(time_que));
@@ -270,15 +270,15 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
             STAILQ_INSERT_TAIL(timeQ, elm, field);
             //check if the last package
             bytesToSend = PACKET_SIZE;
-            temp = (header_t *) send_buf[preTail+1];
+            temp = (header_t *) send_buf[last_send+1];
             if (temp -> seq == lastSeqNum)
                 bytesToSend = lastPckSize + sizeof(header_t);
-            sendto(sockfd, send_buf[preTail+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            sendto(sockfd, send_buf[last_send+1], bytesToSend, 0, (const struct sockaddr *)&dest_addr, sizeof(dest_addr));
             printf("send packet seqNum: %d\n", temp -> seq);
             // if (bytes_sent == -1){
             //     diep("Send error");
             // }
-            preTail++;
+            last_send++;
         }
         //check time out and recv ack
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -288,14 +288,24 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
             if (bytes_recv > 0) {
                 int cur_ack = header_recv->ack - (read_start / dataSize) - 1;
                 if (cur_ack >= base) {
-                    recv_new_ack(cur_ack, fp);
+                    recv_new_ack(cur_ack, fp, true);
+                    //printf("-----window size: %d, sst: %f\n", cw_size, sst);
                 } else if (cur_ack == last_ack) {
                     dupack++;
-                    cw_size++;
+                    if (cw_size < sst)
+                        cw_size++;
+                    else {
+                        cw_cnt++;
+                        if (cw_cnt == cw_size) {
+                            cw_cnt = 0;
+                            cw_size++;
+                        }
+                    }
                     tail = base + cw_size - 1;
                     if (tail >= MAX_BUF_SIZE && !last_loaded) {
                         load_buffer(fp);
                     }
+                    //printf("-----window size: %d, sst: %f\n", cw_size, sst);
                 }
             }
         } else {
@@ -361,20 +371,23 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
         if (time_flag){
             printf("--------timeout\n");
             time_flag = false;
-            sst = cw_size / 2;
+            sst = cw_size / 2.0;
             tail = base;
-            preTail = tail - 1;
+            last_send = tail - 1;
             cw_size = 1;
             dupack = 0;
             STAILQ_INIT(timeQ);
+            cw_cnt = 0;
             slow_start(s, si_other, fp);
         } else if (dupack == 3){
-            sst = cw_size / 2;
+            sst = cw_size / 2.0;
             cw_size = sst + 3;
             tail = base + cw_size - 1;
-            preTail = min(tail, preTail);
+            last_send = min(tail, last_send);
+            cw_cnt = 0;
             fast_recovery(s, si_other, fp);
         } else {
+            cw_cnt = 0;
             slow_start(s, si_other, fp);
         }
     }

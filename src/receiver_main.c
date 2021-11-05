@@ -18,7 +18,7 @@
 #include "header.h"
 // https://www.geeksforgeeks.org/udp-server-client-implementation-c/
 
-#define FLOW_WINDOW_SIZE 32
+#define FLOW_WINDOW_SIZE 64
 
 struct sockaddr_in si_me, si_other;
 int s, slen;

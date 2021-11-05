@@ -22,7 +22,8 @@
 
 struct sockaddr_in si_me, si_other;
 int s, slen;
-char buffer[FLOW_WINDOW_SIZE][PACKET_SIZE]; // https://stackoverflow.com/questions/1088622/how-do-i-create-an-array-of-strings-in-c/1095006
+char buffer[FLOW_WINDOW_SIZE][PACKET_SIZE+1]; // https://stackoverflow.com/questions/1088622/how-do-i-create-an-array-of-strings-in-c/1095006
+// first bit indiciate if it is buffered data or not
 header_t * header; // handshake header, also the last header sent
 header_t * header_recv; // the header received from sender
 int init_seq_no = 0; // sequence number: 20000000/1400 = 14285.71428571 packets in max, seq number max 
@@ -109,7 +110,6 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
 
     // receive file
     char* data;
-    int data_len = PACKET_SIZE - sizeof(header_t);
     socklen_t len = sizeof(si_other);
     int bytes_recv;
     bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
@@ -135,24 +135,25 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                     send_header(header, s, si_other);
                 }else if (header_recv->seq == last_ack + 1){ // receive the base
                     fprintf(stderr, "- Receive the base\n");
-                    memcpy(buffer[buffer_dest], temp_buffer, bytes_recv); // TODO: if sender send the last packet, it should send size based on data size
-                    buffer[buffer_dest][bytes_recv] = 0;
+                    memcpy(buffer[buffer_dest]+1, temp_buffer, bytes_recv); // TODO: if sender send the last packet, it should send size based on data size
+                    buffer[buffer_dest][0] = 1; // 1 indicate this is buffered but not yet to save to file
+                    // buffer[buffer_dest][bytes_recv+1] = 0;
                     int i = 0;
                     for (i = 0; i < FLOW_WINDOW_SIZE; ++i)
                     {
                         /* code */
                         buffer_dest %= FLOW_WINDOW_SIZE;
-                        if (strlen(buffer[buffer_dest] + sizeof(header_t)) != 0){
+                        if (buffer[buffer_dest][0] == 1){
                             
                             // save to file
-                            data = buffer[buffer_dest] + sizeof(header_t);
+                            data = buffer[buffer_dest] + sizeof(header_t) + 1;
                             // fprintf(stderr, "saved data to file: '%s'\n", data);
-                            fwrite(data, strlen(data), 1, file);
+                            fwrite(data, bytes_recv - sizeof(header_t), 1, file);
                             header->syn = 0;
                             // header->fin = 0;
                             header->seq++; // https://stackoverflow.com/questions/822323/how-to-generate-a-random-int-in-c
-                            header->ack = ((header_t *)(buffer[buffer_dest]))->seq; // I use the sequence number from client
-                            strcpy(buffer[buffer_dest]+ sizeof(header_t), ""); // empty
+                            header->ack = ((header_t *)(buffer[buffer_dest]+1))->seq; // I use the sequence number from client
+                            buffer[buffer_dest][0] = 0; // buffer has been saved, can be used again
                             buffer_dest++;
                             last_ack = header->ack;
                         }else{
@@ -162,9 +163,10 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
                     send_header(header, s, si_other);
                 }else{ // receive not the base in the window
                     fprintf(stderr, "- Receive packet in the window other than the base\n");
-                    if (strlen(buffer[buffer_dest]) == 0){
-                        memcpy(buffer[buffer_dest], temp_buffer, bytes_recv);
-                        buffer[buffer_dest][bytes_recv] = 0;
+                    if (buffer[buffer_dest][0] != 1){
+                        memcpy(buffer[buffer_dest]+1, temp_buffer, bytes_recv);
+                        buffer[buffer_dest][0] = 1;
+                        // buffer[buffer_dest][bytes_recv] = 0;
                     }
                     // send previous header.
                     // bytes_sent = sendto(sockfd, header, sizeof(header), 0, (const struct sockaddr *)&dest_addr, len);

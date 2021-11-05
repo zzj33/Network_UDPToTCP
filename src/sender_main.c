@@ -145,7 +145,7 @@ void load_buffer(FILE* fp) {
         header->ack = 0;
         char* data = send_buf[i] + sizeof(header_t);
         fread(data, lastPckSize, 1, fp);
-        last_loaded = true;
+        last_loaded = true;   //need to know the last packet's num to control the tail(cw size) and don't reload anymore
         lastTail = i;
     }
 }
@@ -190,11 +190,11 @@ void recv_new_ack(int cur_ack, FILE* fp, _Bool fast_reco){
     bytes_rem = bytes_rem - dataSize * (last_ack - base + 1); //new ack means packet received successfully
     base = last_ack + 1;
     tail = base + cw_size - 1;
-    last_send = max(last_send, base - 1);
-    last_send = min(last_send, tail);
     if (last_loaded) {
         tail = min(tail, lastTail);
     }
+    last_send = max(last_send, base - 1);   //if recv ack > base
+    last_send = min(last_send, tail);       //if new ack in fast recovery makes the cw smaller
     if (tail >= MAX_BUF_SIZE && !last_loaded) {
         load_buffer(fp);
     }
@@ -328,6 +328,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     if (bytesToTransfer < bytes_to_send){
         bytes_to_send = bytesToTransfer;
     } 
+    if (bytes_to_send == 0) return;
     bytes_rem = bytes_to_send;
     lastSeqNum = bytes_to_send / dataSize + 1;
     lastPckSize = bytes_to_send - ((lastSeqNum - 1) * dataSize);
@@ -401,6 +402,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 
     int bytes_recv;
     socklen_t len = sizeof(si_other);
+    //TODO timeout after no msg
     while(true) {
         bytes_recv = recvfrom(s, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
         if (bytes_recv > 0 && header_recv -> fin == 1) {

@@ -197,13 +197,21 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
     header->fin = 1;
 
     send_header(header, s, si_other); // send fin
-    bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);// receive fin ack
-    while (header_recv->ack != header->seq){
-        // TODO: timeout
+    bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_DONTWAIT, ( struct sockaddr *) &si_other, &len);// receive fin ack
+    struct timespec ts;
+    long curTime;
+    long sendTime;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    sendTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    curTime = sendTime;
+    while (header_recv->ack != header->seq && curTime - sendTime <= 200){
+        clock_gettime(CLOCK_REALTIME, &ts);
+        curTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
         fprintf(stderr, "header_recv->ack:%d, header->seq:%d\n", header_recv->ack, header->seq);
         send_header(header, s, si_other);
-        bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
+        bytes_recv = recvfrom(s, temp_buffer, PACKET_SIZE, MSG_DONTWAIT, ( struct sockaddr *) &si_other, &len);
     }
+    
 
     // TODO: another new line in receive file
     

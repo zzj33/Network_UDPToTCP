@@ -24,12 +24,7 @@
 #include <sys/queue.h>
 #include "header.h"
 
-
-#define HEADER_FLAG 0 //1-0001:SYN, 2-0010:ACK, 4-0100:FIN
-#define HEADER_SEQ 1 //1-4 for seq#
-#define HEADER_ACK 5 //5-8 for ack#
-#define HEADER_DATA 9 //4- for data fragment
-#define INITIAL_TIMEOUT 1000 // in ms
+#define INITIAL_TIMEOUT 200 // in ms
 #define INITIAL_SST 64
 #define MAX_BUF_SIZE 200
 
@@ -60,7 +55,7 @@ int lastPckSize = 0;  //last package's size, if have loaded the last package
 /*congestion window*/
 int cw_size = 1; // congestion window size
 int cw_cnt = 0;  // fraction part of cw
-float sst = INITIAL_SST;
+int sst = INITIAL_SST;
 int base = 0; // the first index in the congestion window (packet)
 int tail = 0; // the last index in the congestion window (packet)
 int dupack = 0;
@@ -70,8 +65,12 @@ int last_ack = -1; //the last ack seqNum
 /*time out*/
 _Bool time_flag = false; //whether timeout
 struct timespec ts;
-long timeout = 500; //timeout bound, in ms
+long timeout = INITIAL_TIMEOUT; //timeout bound, in ms
+long rt = INITIAL_TIMEOUT;
+int dt = 50;
+int measure_cnt = 0; //measure RTT every cw_size ACK
 
+int sizeQ = 0;
 
 typedef struct time_que                             //queue
 {
@@ -142,7 +141,7 @@ void load_buffer(FILE* fp) {
         seqNum++;
     }
     //load the last packet
-    if (seqNum == lastSeqNum && i < MAX_BUF_SIZE) {
+    if (seqNum >= lastSeqNum && i < MAX_BUF_SIZE) {
         header = (header_t *)send_buf[i];
         header->syn = 0;
         header->fin = 0;
@@ -169,13 +168,58 @@ int max(int a, int b) {
         return b;
 }
 
+void resize_timeQ() {
+    printf("resizing...\n");
+    que_head *timeQ_new;
+    timeQ_new = malloc(sizeof(time_que));
+    STAILQ_INIT(timeQ_new);
+    int i = base;
+    printf("Q now is : %d\n", sizeQ);
+    printf("Q should be : %d\n", tail - base + 1);
+    sizeQ = 0;
+    time_que *elm;
+    elm = malloc(sizeof(time_que));
+    for (; i <= tail; i++) {
+        printf("step1\n");
+        if (STAILQ_EMPTY(timeQ))
+            printf("why??????\n");
+        elm -> nsec = STAILQ_FIRST(timeQ)->nsec;
+        printf("step2\n");
+        STAILQ_INSERT_TAIL(timeQ_new, elm, field);
+        printf("step3\n");
+        STAILQ_REMOVE_HEAD(timeQ, field);
+        sizeQ++;
+    }
+    printf("Q now is : %d\n", sizeQ);
+    timeQ = timeQ_new;
+}
+
 void recv_new_ack(int cur_ack, FILE* fp, _Bool fast_reco){
     dupack = 0;
     last_ack = cur_ack;
+    printf("---new ACK----: %d\n", cur_ack);
+    if (measure_cnt >= 10 && !STAILQ_EMPTY(timeQ)) {
+        clock_gettime(CLOCK_REALTIME, &ts);
+        long curTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+        int mt = curTime - STAILQ_FIRST(timeQ)->nsec;
+        printf("mt: %d\n", mt);
+        printf("rt: %ld\n", rt);
+        printf("dt: %d\n", dt);
+        rt = 0.8 * rt + 0.2 * mt;
+        dt = 0.8 * dt + 0.2 * (rt - mt);
+        timeout = rt + 4 * dt;
+        printf("------timeOUT----: %ld\n", timeout);
+        measure_cnt = 0;
+    } else {
+        printf("---measure_cnt----: %d\n", measure_cnt);
+    }
+    measure_cnt += (last_ack - base + 1);
     int i = base;
     for (i = base; i <= last_ack && !STAILQ_EMPTY(timeQ); i++) {
+        sizeQ--;
         STAILQ_REMOVE_HEAD(timeQ, field);
     }
+
     if (fast_reco) { //whether in fast recovery
         cw_size = sst;
     } else {
@@ -183,7 +227,7 @@ void recv_new_ack(int cur_ack, FILE* fp, _Bool fast_reco){
         for (i = base; i <= last_ack; i++) {
             if (cw_size - sst > 0) {
                 cw_cnt++;
-                if (cw_cnt == cw_size) {
+                if (cw_cnt >= cw_size) {
                     cw_size++;
                     cw_cnt = 0;
                 }
@@ -192,12 +236,20 @@ void recv_new_ack(int cur_ack, FILE* fp, _Bool fast_reco){
             }
         }
     }
+
     bytes_rem = bytes_rem - dataSize * (last_ack - base + 1); //new ack means packet received successfully
     base = last_ack + 1;
-    tail = base + cw_size - 1;
+    tail = max(base, base + cw_size - 1);
+
     if (last_loaded) {
         tail = min(tail, lastTail);
     }
+
+    //if cw shrink, resize the timeout queue
+    if (last_send > tail) {
+        resize_timeQ();
+    }
+
     last_send = max(last_send, base - 1);   //if recv ack > base
     last_send = min(last_send, tail);       //if new ack in fast recovery makes the cw smaller
     if (tail >= MAX_BUF_SIZE && !last_loaded) {
@@ -217,6 +269,8 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
             elm = malloc(sizeof(time_que));
             elm -> nsec = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
             STAILQ_INSERT_TAIL(timeQ, elm, field);
+            sizeQ++;
+            printf("Q++: %d\n", sizeQ);
             //check if the last package
             int bytesToSend = PACKET_SIZE;
             header_t * temp = (header_t *) send_buf[last_send+1];
@@ -230,13 +284,25 @@ void slow_start(int sockfd, const struct sockaddr_in dest_addr, FILE* fp){
         //check time out and recv ack
         clock_gettime(CLOCK_REALTIME, &ts);
         long curTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+
+        if (STAILQ_EMPTY(timeQ)) {
+            printf("EMPTY: %d\n", last_send);
+            printf("BASE: %d\n", base);
+            printf("TAIL: %d\n", tail);
+        }
+        printf("%ld\n", curTime - STAILQ_FIRST(timeQ)->nsec);
+        printf("%ld\n", timeout);
         if ((curTime - STAILQ_FIRST(timeQ)->nsec) <= timeout) {
             int bytes_recv = recvfrom(sockfd, header_recv, sizeof(header_t), MSG_DONTWAIT, ( struct sockaddr *) &dest_addr, &len);
+            printf("OK1\n");
             if (bytes_recv > 0) {
+                printf("OK2\n");
                 int cur_ack = header_recv->ack - (read_start / dataSize) - 1;
                 if (cur_ack == last_ack){
+                    printf("OK3\n");
                     dupack++;
                 } else if (cur_ack >= base) {
+                    printf("OK4\n");
                     recv_new_ack(cur_ack, fp, false);
                 }
             }
@@ -264,6 +330,8 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
             elm = malloc(sizeof(time_que));
             elm -> nsec = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
             STAILQ_INSERT_TAIL(timeQ, elm, field);
+            sizeQ++;
+            printf("Q++: %d\n", sizeQ);
             //check if the last package
             bytesToSend = PACKET_SIZE;
             temp = (header_t *) send_buf[last_send+1];
@@ -285,7 +353,7 @@ void fast_recovery(int sockfd, const struct sockaddr_in dest_addr, FILE* fp) {
                 } else if (cur_ack == last_ack) {
                     dupack++;
                     cw_size++;
-                    tail++;
+                    tail = base + cw_size - 1;
                     if (tail >= MAX_BUF_SIZE && !last_loaded) {
                         load_buffer(fp);
                     }
@@ -308,15 +376,16 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
         printf("Could not open file to send.");
         exit(1);
     }
-    fseek(fp, 0, SEEK_END);
-    bytes_to_send = ftell(fp);
-    rewind(fp);
-    if (bytesToTransfer < bytes_to_send){
-        bytes_to_send = bytesToTransfer;
-    } 
+    // fseek(fp, 0, SEEK_END);
+    // bytes_to_send = ftell(fp);
+    // rewind(fp);
+    // if (bytesToTransfer < bytes_to_send){
+    //     bytes_to_send = bytesToTransfer;
+    // }
+    bytes_to_send = bytesToTransfer;
     if (bytes_to_send == 0) return;
     bytes_rem = bytes_to_send;
-    lastSeqNum = bytes_to_send / dataSize + 1;
+    lastSeqNum = (bytes_to_send - 1) / dataSize + 1;
     lastPckSize = bytes_to_send - ((unsigned long long int)(lastSeqNum - 1) * dataSize);
     printf("filesize: %llu\n", bytes_to_send);
     printf("laseSeq: %d\n", lastSeqNum);
@@ -351,25 +420,30 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     //time queue, load buffer, and start send
     timeQ = malloc(sizeof(time_que));
     STAILQ_INIT(timeQ);
-    
+
     load_buffer(fp);
 
     while (bytes_rem > 0){ // change all the parameters here
         if (time_flag){
             printf("--------timeout\n");
             time_flag = false;
-            sst = cw_size / 2.0;
+            sst = cw_size / 2;
             tail = base;
             last_send = tail - 1;
             cw_size = 1;
             dupack = 0;
             STAILQ_INIT(timeQ);
+            sizeQ = 0;
             cw_cnt = 0;
+            measure_cnt = 0;
             slow_start(s, si_other, fp);
         } else if (dupack == 3){
-            sst = cw_size / 2.0;
+            sst = cw_size / 2;
             cw_size = sst + 3;
             tail = base + cw_size - 1;
+            if (last_send > tail) {
+                resize_timeQ();
+            }
             last_send = min(tail, last_send);
             cw_cnt = 0;
             fast_recovery(s, si_other, fp);
@@ -390,8 +464,15 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
     int bytes_recv;
     socklen_t len = sizeof(si_other);
     //TODO timeout after no msg
-    while(true) {
-        bytes_recv = recvfrom(s, header_recv, sizeof(header_t), MSG_WAITALL, ( struct sockaddr *) &si_other, &len);
+    long curTime;
+    long sendTime;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    sendTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    curTime = sendTime;
+    while(curTime - sendTime <= timeout) {
+        clock_gettime(CLOCK_REALTIME, &ts);
+        curTime = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+        int bytes_recv = recvfrom(s, header_recv, sizeof(header_t), MSG_DONTWAIT, ( struct sockaddr *) &si_other, &len);
         if (bytes_recv > 0 && header_recv -> fin == 1) {
                 header->syn = 0;
                 header->seq = header_recv -> seq + 1;
